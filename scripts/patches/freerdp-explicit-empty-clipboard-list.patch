@@ -1,0 +1,14 @@
+diff --git a/channels/cliprdr/client/cliprdr_main.c b/channels/cliprdr/client/cliprdr_main.c
+--- a/channels/cliprdr/client/cliprdr_main.c
++++ b/channels/cliprdr/client/cliprdr_main.c
+@@ -689,2 +689,8 @@ static UINT cliprdr_client_format_list(CliprdrClientContext* context,
+-	/* Allow initial format list from monitor ready, but ignore later attempts */
+-	if ((filterList.numFormats == 0) && cliprdr->initialFormatListSent)
++	/*
++	 * Preserve an explicit empty clipboard announcement. Callers use that
++	 * protocol-level list and its CB_FORMAT_LIST_RESPONSE as a revocation /
++	 * isolation barrier. Continue suppressing only non-empty input lists whose
++	 * every format was removed by the negotiated feature mask.
++	 */
++	const BOOL explicitEmptyList = formatList->numFormats == 0;
++	if ((filterList.numFormats == 0) && cliprdr->initialFormatListSent && !explicitEmptyList)

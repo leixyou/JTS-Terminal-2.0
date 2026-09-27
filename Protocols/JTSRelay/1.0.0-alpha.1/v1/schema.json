@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:jts:relay:protocol:1",
+  "title": "JTS Relay v1 wire records (data-only)",
+  "$defs": {
+    "deviceId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "lane": { "enum": ["control", "file", "rdp"] },
+    "sessionId": { "type": "string", "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$" },
+    "ticket": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+    "info": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "lanes"],
+      "properties": {
+        "protocolVersion": { "const": 1 },
+        "lanes": { "type": "array", "items": { "$ref": "#/$defs/lane" }, "minItems": 3, "maxItems": 3, "uniqueItems": true }
+      }
+    },
+    "challengeRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["deviceId", "operation"],
+      "properties": {
+        "deviceId": { "$ref": "#/$defs/deviceId" },
+        "operation": { "enum": ["presence", "devices", "sessions", "poll"] }
+      }
+    },
+    "challenge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["challengeId", "nonceBase64", "expiresAtUnixSeconds"],
+      "properties": {
+        "challengeId": { "$ref": "#/$defs/sessionId" },
+        "nonceBase64": { "type": "string", "minLength": 44, "maxLength": 44 },
+        "expiresAtUnixSeconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "envelope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["deviceId", "challengeId", "payloadBase64", "signatureBase64"],
+      "properties": {
+        "deviceId": { "$ref": "#/$defs/deviceId" },
+        "challengeId": { "$ref": "#/$defs/sessionId" },
+        "payloadBase64": { "type": "string", "maxLength": 21848 },
+        "signatureBase64": { "type": "string", "minLength": 88, "maxLength": 88 }
+      }
+    },
+    "sessionRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["peerDeviceId", "lane"],
+      "properties": { "peerDeviceId": { "$ref": "#/$defs/deviceId" }, "lane": { "$ref": "#/$defs/lane" } }
+    },
+    "sessionResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sessionId", "ticket", "expiresAtUnixSeconds", "channelPath"],
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/sessionId" }, "ticket": { "$ref": "#/$defs/ticket" },
+        "expiresAtUnixSeconds": { "type": "integer", "minimum": 0 },
+        "channelPath": { "const": "/v1/channel" }
+      }
+    },
+    "offer": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sessionId", "ticket", "expiresAtUnixSeconds", "channelPath", "controllerDeviceId", "lane"],
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/sessionId" }, "ticket": { "$ref": "#/$defs/ticket" },
+        "expiresAtUnixSeconds": { "type": "integer", "minimum": 0 }, "channelPath": { "const": "/v1/channel" },
+        "controllerDeviceId": { "$ref": "#/$defs/deviceId" }, "lane": { "$ref": "#/$defs/lane" }
+      }
+    },
+    "ready": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ready", "sessionId", "lane"],
+      "properties": { "ready": { "const": true }, "sessionId": { "$ref": "#/$defs/sessionId" }, "lane": { "$ref": "#/$defs/lane" } }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "sessionId", "lane", "controllerDeviceId", "companionDeviceId"],
+      "properties": {
+        "protocolVersion": { "const": 1 }, "sessionId": { "$ref": "#/$defs/sessionId" },
+        "lane": { "$ref": "#/$defs/lane" }, "controllerDeviceId": { "$ref": "#/$defs/deviceId" },
+        "companionDeviceId": { "$ref": "#/$defs/deviceId" }
+      }
+    }
+  }
+}

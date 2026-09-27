@@ -1,0 +1,3 @@
+#!/bin/sh
+script_directory=${0%/*}
+exec "${script_directory}/sleeping_ssh.sh" "$@"

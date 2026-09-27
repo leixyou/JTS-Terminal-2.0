@@ -1,0 +1,1838 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		7E8000113010000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E8000023010000000000001 /* main.swift */; };
+		7E8000123010000000000001 /* CompanionListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E8000033010000000000001 /* CompanionListener.swift */; };
+		7E8000133010000000000001 /* CompanionConnectionBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E8000043010000000000001 /* CompanionConnectionBridge.swift */; };
+		7E8000143010000000000001 /* JTSCompanionServiceRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = 7E8000713010000000000001 /* JTSCompanionServiceRuntime */; };
+		7E8000153010000000000001 /* JTSCompanionClient in Frameworks */ = {isa = PBXBuildFile; productRef = 7E8000723010000000000001 /* JTSCompanionClient */; };
+		7E8000193010000000000001 /* JTSCompanionDevices in Frameworks */ = {isa = PBXBuildFile; productRef = 7E8000753010000000000001 /* JTSCompanionDevices */; };
+		7E80001A3010000000000001 /* JTSCompanionDevices in Frameworks */ = {isa = PBXBuildFile; productRef = 7E8000763010000000000001 /* JTSCompanionDevices */; };
+		7E8000163010000000000001 /* JTCompanionTransportService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 7E8000013010000000000001 /* JTCompanionTransportService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		7E8000173010000000000001 /* JTSCompanionIPC in Frameworks */ = {isa = PBXBuildFile; productRef = 7E8000733010000000000001 /* JTSCompanionIPC */; };
+		7E8000183010000000000001 /* JTSCompanionIPC in Frameworks */ = {isa = PBXBuildFile; productRef = 7E8000743010000000000001 /* JTSCompanionIPC */; };
+		7E1000202FB0000000000001 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 7E0000022FA3000000000001 /* SwiftTerm */; };
+		7E1000212FB0000000000001 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 7E1000292FB0000000000001 /* Citadel */; };
+		7E1000222FB0000000000001 /* NIO in Frameworks */ = {isa = PBXBuildFile; productRef = 7E10002A2FB0000000000001 /* NIO */; };
+		7E1000232FB0000000000001 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 7E10002B2FB0000000000001 /* NIOSSH */; };
+		7E1000242FB0000000000001 /* Crypto in Frameworks */ = {isa = PBXBuildFile; productRef = 7E10002C2FB0000000000001 /* Crypto */; };
+		7E2000202FC0000000000001 /* JTFreeRDP.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7E2000022FC0000000000001 /* JTFreeRDP.xcframework */; };
+		7E2000212FC0000000000001 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 7E2000032FC0000000000001 /* main.m */; };
+		7E2000222FC0000000000001 /* JTFreeRDPService.m in Sources */ = {isa = PBXBuildFile; fileRef = 7E2000042FC0000000000001 /* JTFreeRDPService.m */; };
+		7E2000232FC0000000000001 /* JTFreeRDPEngine.m in Sources */ = {isa = PBXBuildFile; fileRef = 7E2000062FC0000000000001 /* JTFreeRDPEngine.m */; };
+		7E2000282FC0000000000001 /* JTFreeRDPXPCValidation.m in Sources */ = {isa = PBXBuildFile; fileRef = 7E20000E2FC0000000000001 /* JTFreeRDPXPCValidation.m */; };
+		7E2000292FC0000000000001 /* JTFreeRDPCommandQueue.m in Sources */ = {isa = PBXBuildFile; fileRef = 7E2000102FC0000000000002 /* JTFreeRDPCommandQueue.m */; };
+		7E20002B2FC0000000000001 /* JTFreeRDPDeferredReleasePool.m in Sources */ = {isa = PBXBuildFile; fileRef = 7E2000132FC0000000000002 /* JTFreeRDPDeferredReleasePool.m */; };
+		7E20002C2FC0000000000001 /* JTFreeRDPTextClipboardBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 7E2000152FC0000000000002 /* JTFreeRDPTextClipboardBridge.m */; };
+		7E2000252FC0000000000001 /* FreeRDP-Apache-2.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7E20000B2FC0000000000001 /* FreeRDP-Apache-2.0.txt */; };
+		7E2000262FC0000000000001 /* OpenSSL-Apache-2.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7E20000C2FC0000000000001 /* OpenSSL-Apache-2.0.txt */; };
+		7E2000272FC0000000000001 /* sbom.cdx.json in Resources */ = {isa = PBXBuildFile; fileRef = 7E20000D2FC0000000000001 /* sbom.cdx.json */; };
+		7E20002A2FC0000000000001 /* FreeRDP-cpufeatures-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7E2000122FC0000000000002 /* FreeRDP-cpufeatures-NOTICE.txt */; };
+		7E3000012FD0000000000001 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 7E0000022FA3000000000001 /* SwiftTerm */; };
+		7E3000022FD0000000000001 /* JTFreeRDPService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 7E2000012FC0000000000001 /* JTFreeRDPService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		7E3001002FD0000000000001 /* FreeRDP-Apache-2.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7E20000B2FC0000000000001 /* FreeRDP-Apache-2.0.txt */; };
+		7E3001012FD0000000000001 /* OpenSSL-Apache-2.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7E20000C2FC0000000000001 /* OpenSSL-Apache-2.0.txt */; };
+		7E3001022FD0000000000001 /* sbom.cdx.json in Resources */ = {isa = PBXBuildFile; fileRef = 7E20000D2FC0000000000001 /* sbom.cdx.json */; };
+		7E3001032FD0000000000001 /* FreeRDP-cpufeatures-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7E2000122FC0000000000002 /* FreeRDP-cpufeatures-NOTICE.txt */; };
+		7E5000012FF0000000000001 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 7E5000102FF0000000000001 /* main.c */; };
+		7E5000032FF0000000000001 /* JTSSHAskpass in Embed SSH Askpass Helper */ = {isa = PBXBuildFile; fileRef = 7E5000122FF0000000000001 /* JTSSHAskpass */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7E8000603010000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3021355F2FA23D6A009C2A46 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E8000403010000000000001;
+			remoteInfo = JTCompanionTransportService;
+		};
+		7E10001C2FB0000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3021355F2FA23D6A009C2A46 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E1000102FB0000000000001;
+			remoteInfo = JTSTerminaliOS;
+		};
+		7E10001E2FB0000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3021355F2FA23D6A009C2A46 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E1000102FB0000000000001;
+			remoteInfo = JTSTerminaliOS;
+		};
+		7E3000032FD0000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3021355F2FA23D6A009C2A46 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E2000402FC0000000000001;
+			remoteInfo = JTFreeRDPService;
+		};
+		7E3000042FD0000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3021355F2FA23D6A009C2A46 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E3000102FD0000000000001;
+			remoteInfo = JTSTerminalRDP2;
+		};
+		7E4000022FE0000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3021355F2FA23D6A009C2A46 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E3000102FD0000000000001;
+			remoteInfo = JTSTerminalRDP2;
+		};
+		7E5000512FF0000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3021355F2FA23D6A009C2A46 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E5000602FF0000000000001;
+			remoteInfo = JTSSHAskpass;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7E3000052FD0000000000001 /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				7E3000022FD0000000000001 /* JTFreeRDPService.xpc in Embed XPC Services */,
+				7E8000163010000000000001 /* JTCompanionTransportService.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E5000412FF0000000000001 /* Embed SSH Askpass Helper */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				7E5000032FF0000000000001 /* JTSSHAskpass in Embed SSH Askpass Helper */,
+			);
+			name = "Embed SSH Askpass Helper";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		7E8000013010000000000001 /* JTCompanionTransportService.xpc */ = {isa = PBXFileReference; explicitFileType = wrapper.xpc-service; includeInIndex = 0; path = JTCompanionTransportService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E8000023010000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		7E8000033010000000000001 /* CompanionListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionListener.swift; sourceTree = "<group>"; };
+		7E8000043010000000000001 /* CompanionConnectionBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionConnectionBridge.swift; sourceTree = "<group>"; };
+		7E8000053010000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7E8000063010000000000001 /* JTCompanionTransportService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JTCompanionTransportService.entitlements; sourceTree = "<group>"; };
+		7E1000012FB0000000000001 /* JTS Terminal iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "JTS Terminal iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E1000022FB0000000000001 /* JTSTerminaliOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JTSTerminaliOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E1000032FB0000000000001 /* JTSTerminaliOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JTSTerminaliOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E2000012FC0000000000001 /* JTFreeRDPService.xpc */ = {isa = PBXFileReference; explicitFileType = wrapper.xpc-service; includeInIndex = 0; path = JTFreeRDPService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E2000022FC0000000000001 /* JTFreeRDP.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/FreeRDP/JTFreeRDP.xcframework; sourceTree = "<group>"; };
+		7E2000032FC0000000000001 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		7E2000042FC0000000000001 /* JTFreeRDPService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = JTFreeRDPService.m; sourceTree = "<group>"; };
+		7E2000052FC0000000000001 /* JTFreeRDPService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JTFreeRDPService.h; sourceTree = "<group>"; };
+		7E2000062FC0000000000001 /* JTFreeRDPEngine.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = JTFreeRDPEngine.m; sourceTree = "<group>"; };
+		7E2000072FC0000000000001 /* JTFreeRDPEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JTFreeRDPEngine.h; sourceTree = "<group>"; };
+		7E2000082FC0000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7E2000092FC0000000000001 /* JTFreeRDPService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JTFreeRDPService.entitlements; sourceTree = "<group>"; };
+		7E20000A2FC0000000000001 /* JTFreeRDPXPCProtocol.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JTFreeRDPXPCProtocol.h; sourceTree = "<group>"; };
+		7E20000B2FC0000000000001 /* FreeRDP-Apache-2.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Vendor/FreeRDP/Licenses/FreeRDP-Apache-2.0.txt"; sourceTree = "<group>"; };
+		7E20000C2FC0000000000001 /* OpenSSL-Apache-2.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Vendor/FreeRDP/Licenses/OpenSSL-Apache-2.0.txt"; sourceTree = "<group>"; };
+		7E20000D2FC0000000000001 /* sbom.cdx.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Vendor/FreeRDP/sbom.cdx.json; sourceTree = "<group>"; };
+		7E20000E2FC0000000000001 /* JTFreeRDPXPCValidation.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = JTFreeRDPXPCValidation.m; sourceTree = "<group>"; };
+		7E20000F2FC0000000000001 /* JTFreeRDPXPCValidation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JTFreeRDPXPCValidation.h; sourceTree = "<group>"; };
+		7E2000102FC0000000000002 /* JTFreeRDPCommandQueue.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = JTFreeRDPCommandQueue.m; sourceTree = "<group>"; };
+		7E2000112FC0000000000002 /* JTFreeRDPCommandQueue.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JTFreeRDPCommandQueue.h; sourceTree = "<group>"; };
+		7E2000122FC0000000000002 /* FreeRDP-cpufeatures-NOTICE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Vendor/FreeRDP/Licenses/FreeRDP-cpufeatures-NOTICE.txt"; sourceTree = "<group>"; };
+		7E2000132FC0000000000002 /* JTFreeRDPDeferredReleasePool.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = JTFreeRDPDeferredReleasePool.m; sourceTree = "<group>"; };
+		7E2000142FC0000000000002 /* JTFreeRDPDeferredReleasePool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JTFreeRDPDeferredReleasePool.h; sourceTree = "<group>"; };
+		7E2000152FC0000000000002 /* JTFreeRDPTextClipboardBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = JTFreeRDPTextClipboardBridge.m; sourceTree = "<group>"; };
+		7E2000162FC0000000000002 /* JTFreeRDPTextClipboardBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JTFreeRDPTextClipboardBridge.h; sourceTree = "<group>"; };
+		7E3000062FD0000000000001 /* JTS Terminal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "JTS Terminal.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E3000072FD0000000000001 /* JTSTerminalRDP2Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JTSTerminalRDP2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E4000012FE0000000000001 /* JTSTerminalRDP2UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JTSTerminalRDP2UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E5000102FF0000000000001 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
+		7E5000112FF0000000000001 /* JTSSHAskpass.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JTSSHAskpass.entitlements; sourceTree = "<group>"; };
+		7E5000122FF0000000000001 /* JTSSHAskpass */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = JTSSHAskpass; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7E6000022FF1000000000001 /* Exceptions for "JTSTerminal" folder in "JTSTerminalRDP2" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7E3000102FD0000000000001 /* JTSTerminalRDP2 */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		302135692FA23D6A009C2A46 /* JTSTerminal */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7E6000022FF1000000000001 /* Exceptions for "JTSTerminal" folder in "JTSTerminalRDP2" target */,
+			);
+			path = JTSTerminal;
+			sourceTree = "<group>";
+		};
+		302135792FA23D6B009C2A46 /* JTSTerminalTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = JTSTerminalTests;
+			sourceTree = "<group>";
+		};
+		302135832FA23D6B009C2A46 /* JTSTerminalUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = JTSTerminalUITests;
+			sourceTree = "<group>";
+		};
+		7E1000042FB0000000000001 /* JTSTerminaliOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = JTSTerminaliOS;
+			sourceTree = "<group>";
+		};
+		7E1000052FB0000000000001 /* JTSTerminaliOSTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = JTSTerminaliOSTests;
+			sourceTree = "<group>";
+		};
+		7E1000062FB0000000000001 /* JTSTerminaliOSUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = JTSTerminaliOSUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7E8000313010000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E8000143010000000000001 /* JTSCompanionServiceRuntime in Frameworks */,
+				7E8000173010000000000001 /* JTSCompanionIPC in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E1000082FB0000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E1000202FB0000000000001 /* SwiftTerm in Frameworks */,
+				7E1000212FB0000000000001 /* Citadel in Frameworks */,
+				7E1000222FB0000000000001 /* NIO in Frameworks */,
+				7E1000232FB0000000000001 /* NIOSSH in Frameworks */,
+				7E1000242FB0000000000001 /* Crypto in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E10000B2FB0000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E10000E2FB0000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E2000312FC0000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E2000202FC0000000000001 /* JTFreeRDP.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E3000082FD0000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E3000012FD0000000000001 /* SwiftTerm in Frameworks */,
+				7E8000153010000000000001 /* JTSCompanionClient in Frameworks */,
+				7E8000193010000000000001 /* JTSCompanionDevices in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E3000092FD0000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E8000183010000000000001 /* JTSCompanionIPC in Frameworks */,
+				7E80001A3010000000000001 /* JTSCompanionDevices in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E4000042FE0000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E5000312FF0000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3021355E2FA23D6A009C2A46 = {
+			isa = PBXGroup;
+			children = (
+				302135692FA23D6A009C2A46 /* JTSTerminal */,
+				302135792FA23D6B009C2A46 /* JTSTerminalTests */,
+				302135832FA23D6B009C2A46 /* JTSTerminalUITests */,
+				7E1000042FB0000000000001 /* JTSTerminaliOS */,
+				7E1000052FB0000000000001 /* JTSTerminaliOSTests */,
+				7E1000062FB0000000000001 /* JTSTerminaliOSUITests */,
+				7E2000102FC0000000000001 /* JTFreeRDPService */,
+				7E8000203010000000000001 /* JTCompanionTransportService */,
+				7E2000112FC0000000000001 /* RDPXPCShared */,
+				7E5000202FF0000000000001 /* JTSSHAskpass */,
+				7E2000022FC0000000000001 /* JTFreeRDP.xcframework */,
+				7E20000B2FC0000000000001 /* FreeRDP-Apache-2.0.txt */,
+				7E2000122FC0000000000002 /* FreeRDP-cpufeatures-NOTICE.txt */,
+				7E20000C2FC0000000000001 /* OpenSSL-Apache-2.0.txt */,
+				7E20000D2FC0000000000001 /* sbom.cdx.json */,
+				302135682FA23D6A009C2A46 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		302135682FA23D6A009C2A46 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7E3000062FD0000000000001 /* JTS Terminal.app */,
+				7E3000072FD0000000000001 /* JTSTerminalRDP2Tests.xctest */,
+				7E4000012FE0000000000001 /* JTSTerminalRDP2UITests.xctest */,
+				7E1000012FB0000000000001 /* JTS Terminal iOS.app */,
+				7E1000022FB0000000000001 /* JTSTerminaliOSTests.xctest */,
+				7E1000032FB0000000000001 /* JTSTerminaliOSUITests.xctest */,
+				7E2000012FC0000000000001 /* JTFreeRDPService.xpc */,
+				7E8000013010000000000001 /* JTCompanionTransportService.xpc */,
+				7E5000122FF0000000000001 /* JTSSHAskpass */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		7E2000102FC0000000000001 /* JTFreeRDPService */ = {
+			isa = PBXGroup;
+			children = (
+				7E2000032FC0000000000001 /* main.m */,
+				7E2000042FC0000000000001 /* JTFreeRDPService.m */,
+				7E2000052FC0000000000001 /* JTFreeRDPService.h */,
+				7E2000062FC0000000000001 /* JTFreeRDPEngine.m */,
+				7E2000072FC0000000000001 /* JTFreeRDPEngine.h */,
+				7E20000E2FC0000000000001 /* JTFreeRDPXPCValidation.m */,
+				7E20000F2FC0000000000001 /* JTFreeRDPXPCValidation.h */,
+				7E2000102FC0000000000002 /* JTFreeRDPCommandQueue.m */,
+				7E2000112FC0000000000002 /* JTFreeRDPCommandQueue.h */,
+				7E2000132FC0000000000002 /* JTFreeRDPDeferredReleasePool.m */,
+				7E2000142FC0000000000002 /* JTFreeRDPDeferredReleasePool.h */,
+				7E2000152FC0000000000002 /* JTFreeRDPTextClipboardBridge.m */,
+				7E2000162FC0000000000002 /* JTFreeRDPTextClipboardBridge.h */,
+				7E2000082FC0000000000001 /* Info.plist */,
+				7E2000092FC0000000000001 /* JTFreeRDPService.entitlements */,
+			);
+			path = JTFreeRDPService;
+			sourceTree = "<group>";
+		};
+		7E2000112FC0000000000001 /* RDPXPCShared */ = {
+			isa = PBXGroup;
+			children = (
+				7E20000A2FC0000000000001 /* JTFreeRDPXPCProtocol.h */,
+			);
+			path = RDPXPCShared;
+			sourceTree = "<group>";
+		};
+		7E5000202FF0000000000001 /* JTSSHAskpass */ = {
+			isa = PBXGroup;
+			children = (
+				7E5000102FF0000000000001 /* main.c */,
+				7E5000112FF0000000000001 /* JTSSHAskpass.entitlements */,
+			);
+			path = JTSSHAskpass;
+			sourceTree = "<group>";
+		};
+		7E8000203010000000000001 /* JTCompanionTransportService */ = {
+			isa = PBXGroup;
+			children = (
+				7E8000023010000000000001 /* main.swift */,
+				7E8000033010000000000001 /* CompanionListener.swift */,
+				7E8000043010000000000001 /* CompanionConnectionBridge.swift */,
+				7E8000053010000000000001 /* Info.plist */,
+				7E8000063010000000000001 /* JTCompanionTransportService.entitlements */,
+			);
+			path = JTCompanionTransportService;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7E8000403010000000000001 /* JTCompanionTransportService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E8000523010000000000001 /* Build configuration list for PBXNativeTarget "JTCompanionTransportService" */;
+			buildPhases = (
+				7E8000323010000000000001 /* Sources */,
+				7E8000313010000000000001 /* Frameworks */,
+				7E8000333010000000000001 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = JTCompanionTransportService;
+			packageProductDependencies = (
+				7E8000713010000000000001 /* JTSCompanionServiceRuntime */,
+				7E8000733010000000000001 /* JTSCompanionIPC */,
+			);
+			productName = JTCompanionTransportService;
+			productReference = 7E8000013010000000000001 /* JTCompanionTransportService.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
+		7E1000102FB0000000000001 /* JTSTerminaliOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E1000132FB0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminaliOS" */;
+			buildPhases = (
+				7E1000072FB0000000000001 /* Sources */,
+				7E1000082FB0000000000001 /* Frameworks */,
+				7E1000092FB0000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7E1000042FB0000000000001 /* JTSTerminaliOS */,
+			);
+			name = JTSTerminaliOS;
+			packageProductDependencies = (
+				7E0000022FA3000000000001 /* SwiftTerm */,
+				7E1000292FB0000000000001 /* Citadel */,
+				7E10002A2FB0000000000001 /* NIO */,
+				7E10002B2FB0000000000001 /* NIOSSH */,
+				7E10002C2FB0000000000001 /* Crypto */,
+			);
+			productName = JTSTerminaliOS;
+			productReference = 7E1000012FB0000000000001 /* JTS Terminal iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		7E1000112FB0000000000001 /* JTSTerminaliOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E1000142FB0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminaliOSTests" */;
+			buildPhases = (
+				7E10000A2FB0000000000001 /* Sources */,
+				7E10000B2FB0000000000001 /* Frameworks */,
+				7E10000C2FB0000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7E10001D2FB0000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7E1000052FB0000000000001 /* JTSTerminaliOSTests */,
+			);
+			name = JTSTerminaliOSTests;
+			packageProductDependencies = (
+			);
+			productName = JTSTerminaliOSTests;
+			productReference = 7E1000022FB0000000000001 /* JTSTerminaliOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		7E1000122FB0000000000001 /* JTSTerminaliOSUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E1000152FB0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminaliOSUITests" */;
+			buildPhases = (
+				7E10000D2FB0000000000001 /* Sources */,
+				7E10000E2FB0000000000001 /* Frameworks */,
+				7E10000F2FB0000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7E10001F2FB0000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7E1000062FB0000000000001 /* JTSTerminaliOSUITests */,
+			);
+			name = JTSTerminaliOSUITests;
+			packageProductDependencies = (
+			);
+			productName = JTSTerminaliOSUITests;
+			productReference = 7E1000032FB0000000000001 /* JTSTerminaliOSUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		7E2000402FC0000000000001 /* JTFreeRDPService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E2000522FC0000000000001 /* Build configuration list for PBXNativeTarget "JTFreeRDPService" */;
+			buildPhases = (
+				7E2000322FC0000000000001 /* Sources */,
+				7E2000312FC0000000000001 /* Frameworks */,
+				7E2000332FC0000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = JTFreeRDPService;
+			packageProductDependencies = (
+			);
+			productName = JTFreeRDPService;
+			productReference = 7E2000012FC0000000000001 /* JTFreeRDPService.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
+		7E3000102FD0000000000001 /* JTSTerminalRDP2 */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E3000202FD0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminalRDP2" */;
+			buildPhases = (
+				7E30000A2FD0000000000001 /* Sources */,
+				7E3000082FD0000000000001 /* Frameworks */,
+				7E30000B2FD0000000000001 /* Resources */,
+				7E7000023000000000000001 /* Write Build Info */,
+				7E7000013000000000000001 /* Embed Windows Companion Installer */,
+				7E3000052FD0000000000001 /* Embed XPC Services */,
+				7E5000412FF0000000000001 /* Embed SSH Askpass Helper */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7E3000122FD0000000000001 /* PBXTargetDependency */,
+				7E8000613010000000000001 /* PBXTargetDependency */,
+				7E5000532FF0000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				302135692FA23D6A009C2A46 /* JTSTerminal */,
+			);
+			name = JTSTerminalRDP2;
+			packageProductDependencies = (
+				7E0000022FA3000000000001 /* SwiftTerm */,
+				7E8000723010000000000001 /* JTSCompanionClient */,
+				7E8000753010000000000001 /* JTSCompanionDevices */,
+			);
+			productName = JTSTerminalRDP2;
+			productReference = 7E3000062FD0000000000001 /* JTS Terminal.app */;
+			productType = "com.apple.product-type.application";
+		};
+		7E3000112FD0000000000001 /* JTSTerminalRDP2Tests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E3000212FD0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminalRDP2Tests" */;
+			buildPhases = (
+				7E30000D2FD0000000000001 /* Sources */,
+				7E3000092FD0000000000001 /* Frameworks */,
+				7E30000E2FD0000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7E3000132FD0000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				302135792FA23D6B009C2A46 /* JTSTerminalTests */,
+			);
+			name = JTSTerminalRDP2Tests;
+			packageProductDependencies = (
+				7E8000743010000000000001 /* JTSCompanionIPC */,
+				7E8000763010000000000001 /* JTSCompanionDevices */,
+			);
+			productName = JTSTerminalRDP2Tests;
+			productReference = 7E3000072FD0000000000001 /* JTSTerminalRDP2Tests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		7E4000072FE0000000000001 /* JTSTerminalRDP2UITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E4000102FE0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminalRDP2UITests" */;
+			buildPhases = (
+				7E4000032FE0000000000001 /* Sources */,
+				7E4000042FE0000000000001 /* Frameworks */,
+				7E4000052FE0000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7E4000062FE0000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				302135832FA23D6B009C2A46 /* JTSTerminalUITests */,
+			);
+			name = JTSTerminalRDP2UITests;
+			packageProductDependencies = (
+			);
+			productName = JTSTerminalRDP2UITests;
+			productReference = 7E4000012FE0000000000001 /* JTSTerminalRDP2UITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		7E5000602FF0000000000001 /* JTSSHAskpass */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E5000722FF0000000000001 /* Build configuration list for PBXNativeTarget "JTSSHAskpass" */;
+			buildPhases = (
+				7E5000302FF0000000000001 /* Sources */,
+				7E5000312FF0000000000001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = JTSSHAskpass;
+			packageProductDependencies = (
+			);
+			productName = JTSSHAskpass;
+			productReference = 7E5000122FF0000000000001 /* JTSSHAskpass */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3021355F2FA23D6A009C2A46 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2640;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					7E8000403010000000000001 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					7E1000102FB0000000000001 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					7E1000112FB0000000000001 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = 7E1000102FB0000000000001;
+					};
+					7E1000122FB0000000000001 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = 7E1000102FB0000000000001;
+					};
+					7E2000402FC0000000000001 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					7E3000102FD0000000000001 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					7E3000112FD0000000000001 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = 7E3000102FD0000000000001;
+					};
+					7E4000072FE0000000000001 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = 7E3000102FD0000000000001;
+					};
+					7E5000602FF0000000000001 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+				};
+			};
+			buildConfigurationList = 302135622FA23D6A009C2A46 /* Build configuration list for PBXProject "JTSTerminal" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 3021355E2FA23D6A009C2A46;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7E8000703010000000000001 /* XCLocalSwiftPackageReference "Packages/JTSCompanionTransport" */,
+				7E0000012FA3000000000001 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				7E1000252FB0000000000001 /* XCRemoteSwiftPackageReference "Citadel" */,
+				7E1000262FB0000000000001 /* XCRemoteSwiftPackageReference "swift-nio" */,
+				7E1000272FB0000000000001 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
+				7E1000282FB0000000000001 /* XCRemoteSwiftPackageReference "swift-crypto" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 302135682FA23D6A009C2A46 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7E8000403010000000000001 /* JTCompanionTransportService */,
+				7E1000102FB0000000000001 /* JTSTerminaliOS */,
+				7E1000112FB0000000000001 /* JTSTerminaliOSTests */,
+				7E1000122FB0000000000001 /* JTSTerminaliOSUITests */,
+				7E2000402FC0000000000001 /* JTFreeRDPService */,
+				7E3000102FD0000000000001 /* JTSTerminalRDP2 */,
+				7E3000112FD0000000000001 /* JTSTerminalRDP2Tests */,
+				7E4000072FE0000000000001 /* JTSTerminalRDP2UITests */,
+				7E5000602FF0000000000001 /* JTSSHAskpass */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7E8000333010000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E1000092FB0000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E10000C2FB0000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E10000F2FB0000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E2000332FC0000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E2000252FC0000000000001 /* FreeRDP-Apache-2.0.txt in Resources */,
+				7E20002A2FC0000000000001 /* FreeRDP-cpufeatures-NOTICE.txt in Resources */,
+				7E2000262FC0000000000001 /* OpenSSL-Apache-2.0.txt in Resources */,
+				7E2000272FC0000000000001 /* sbom.cdx.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E30000B2FD0000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E3001002FD0000000000001 /* FreeRDP-Apache-2.0.txt in Resources */,
+				7E3001032FD0000000000001 /* FreeRDP-cpufeatures-NOTICE.txt in Resources */,
+				7E3001012FD0000000000001 /* OpenSSL-Apache-2.0.txt in Resources */,
+				7E3001022FD0000000000001 /* sbom.cdx.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E30000E2FD0000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E4000052FE0000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		7E7000023000000000000001 /* Write Build Info */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/write_build_info.sh",
+			);
+			name = "Write Build Info";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/JTSBuildInfo.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "/bin/bash \"${SRCROOT}/scripts/write_build_info.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		7E7000013000000000000001 /* Embed Windows Companion Installer */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Windows Companion Installer";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"${SRCROOT}/scripts/embed_windows_companion_installer.sh\" --resources-dir \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\" --required \"${JTS_REQUIRE_WINDOWS_COMPANION_INSTALLER:-0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7E8000323010000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E8000113010000000000001 /* main.swift in Sources */,
+				7E8000123010000000000001 /* CompanionListener.swift in Sources */,
+				7E8000133010000000000001 /* CompanionConnectionBridge.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E1000072FB0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E10000A2FB0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E10000D2FB0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E2000322FC0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E2000212FC0000000000001 /* main.m in Sources */,
+				7E2000222FC0000000000001 /* JTFreeRDPService.m in Sources */,
+				7E2000232FC0000000000001 /* JTFreeRDPEngine.m in Sources */,
+				7E2000282FC0000000000001 /* JTFreeRDPXPCValidation.m in Sources */,
+				7E2000292FC0000000000001 /* JTFreeRDPCommandQueue.m in Sources */,
+				7E20002B2FC0000000000001 /* JTFreeRDPDeferredReleasePool.m in Sources */,
+				7E20002C2FC0000000000001 /* JTFreeRDPTextClipboardBridge.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E30000A2FD0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E30000D2FD0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E4000032FE0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E5000302FF0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E5000012FF0000000000001 /* main.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7E8000613010000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E8000403010000000000001 /* JTCompanionTransportService */;
+			targetProxy = 7E8000603010000000000001 /* PBXContainerItemProxy */;
+		};
+		7E10001D2FB0000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E1000102FB0000000000001 /* JTSTerminaliOS */;
+			targetProxy = 7E10001C2FB0000000000001 /* PBXContainerItemProxy */;
+		};
+		7E10001F2FB0000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E1000102FB0000000000001 /* JTSTerminaliOS */;
+			targetProxy = 7E10001E2FB0000000000001 /* PBXContainerItemProxy */;
+		};
+		7E3000122FD0000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E2000402FC0000000000001 /* JTFreeRDPService */;
+			targetProxy = 7E3000032FD0000000000001 /* PBXContainerItemProxy */;
+		};
+		7E3000132FD0000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E3000102FD0000000000001 /* JTSTerminalRDP2 */;
+			targetProxy = 7E3000042FD0000000000001 /* PBXContainerItemProxy */;
+		};
+		7E4000062FE0000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E3000102FD0000000000001 /* JTSTerminalRDP2 */;
+			targetProxy = 7E4000022FE0000000000001 /* PBXContainerItemProxy */;
+		};
+		7E5000532FF0000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E5000602FF0000000000001 /* JTSSHAskpass */;
+			targetProxy = 7E5000512FF0000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		7E8000503010000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = YES;
+				CODE_SIGN_ENTITLEMENTS = JTCompanionTransportService/JTCompanionTransportService.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JTCompanionTransportService/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 2.5;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.CompanionTransportService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7E8000513010000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = YES;
+				CODE_SIGN_ENTITLEMENTS = JTCompanionTransportService/JTCompanionTransportService.entitlements;
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JTCompanionTransportService/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 2.5;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.CompanionTransportService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		302135882FA23D6B009C2A46 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -disable-sandbox";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		302135892FA23D6B009C2A46 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -disable-sandbox";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		7E4000112FE0000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminalRDP2UITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG ENABLE_RDP_2 $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = JTSTerminalRDP2;
+			};
+			name = Debug;
+		};
+		7E4000122FE0000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminalRDP2UITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "ENABLE_RDP_2 $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = JTSTerminalRDP2;
+			};
+			name = Release;
+		};
+		7E1000162FB0000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = JTSTerminaliOS/JTSTerminaliOS.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "JTS Terminal";
+				INFOPLIST_KEY_CFBundleName = "JTS Terminal";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal;
+				PRODUCT_MODULE_NAME = JTSTerminaliOS;
+				PRODUCT_NAME = "JTS Terminal iOS";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7E1000172FB0000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = JTSTerminaliOS/JTSTerminaliOS.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "JTS Terminal";
+				INFOPLIST_KEY_CFBundleName = "JTS Terminal";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal;
+				PRODUCT_MODULE_NAME = JTSTerminaliOS;
+				PRODUCT_NAME = "JTS Terminal iOS";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		7E1000182FB0000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.ios.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/JTS Terminal iOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JTS Terminal iOS";
+			};
+			name = Debug;
+		};
+		7E1000192FB0000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.ios.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/JTS Terminal iOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JTS Terminal iOS";
+			};
+			name = Release;
+		};
+		7E10001A2FB0000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.ios.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = JTSTerminaliOS;
+			};
+			name = Debug;
+		};
+		7E10001B2FB0000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.ios.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = JTSTerminaliOS;
+			};
+			name = Release;
+		};
+		7E3000302FD0000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = YES;
+				CODE_SIGN_ENTITLEMENTS = "$(JTS_RDP2_APP_ENTITLEMENTS)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JTSTerminal/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "JTS Terminal";
+				INFOPLIST_KEY_CFBundleName = "JTS Terminal";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "JTS Terminal connects only to Windows and server addresses you explicitly save or open. RDP and Windows Companion do not scan or open additional TCP/UDP listeners. User-started SSH tunnels listen only on bind addresses the user explicitly configures.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				JTS_RDP2_APP_ENTITLEMENTS = JTSTerminal/JTSTerminal.entitlements;
+				JTS_REQUIRE_WINDOWS_COMPANION_INSTALLER = 0;
+				JTS_UI_TEST_BUNDLE_SUFFIX = .UITesting;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.lljts.JTSTerminal$(JTS_UI_TEST_BUNDLE_SUFFIX)";
+				PRODUCT_MODULE_NAME = JTSTerminal;
+				PRODUCT_NAME = "JTS Terminal";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG ENABLE_RDP_2 JTS_UI_TEST_SUPPORT $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7E3000312FD0000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "$(JTS_RDP2_APP_ENTITLEMENTS)";
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JTSTerminal/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "JTS Terminal";
+				INFOPLIST_KEY_CFBundleName = "JTS Terminal";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "JTS Terminal connects only to Windows and server addresses you explicitly save or open. RDP and Windows Companion do not scan or open additional TCP/UDP listeners. User-started SSH tunnels listen only on bind addresses the user explicitly configures.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				JTS_RDP2_APP_ENTITLEMENTS = JTSTerminal/JTSTerminal.entitlements;
+				JTS_REQUIRE_WINDOWS_COMPANION_INSTALLER = 1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal;
+				PRODUCT_MODULE_NAME = JTSTerminal;
+				PRODUCT_NAME = "JTS Terminal";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "ENABLE_RDP_2 $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		7E3000322FD0000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)/JTS\\ Terminal.app/Contents/MacOS",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 2.0;
+				OTHER_LDFLAGS = "$(BUILT_PRODUCTS_DIR)/JTS\\ Terminal.app/Contents/MacOS/JTS\\ Terminal.debug.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.RDP2Tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG ENABLE_RDP_2 $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/JTS Terminal.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JTS Terminal";
+			};
+			name = Debug;
+		};
+		7E3000332FD0000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)/JTS\\ Terminal.app/Contents/MacOS",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 2.0;
+				OTHER_LDFLAGS = "$(BUILT_PRODUCTS_DIR)/JTS\\ Terminal.app/Contents/MacOS/JTS\\ Terminal.debug.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.RDP2Tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "ENABLE_RDP_2 $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/JTS Terminal.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JTS Terminal";
+			};
+			name = Release;
+		};
+		7E2000502FC0000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = NO;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = YES;
+				CODE_SIGN_ENTITLEMENTS = JTFreeRDPService/JTFreeRDPService.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JTFreeRDPService/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 2.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-u,_drdynvc_VirtualChannelEntryEx",
+					"-Wl,-u,_cliprdr_VirtualChannelEntryEx",
+					"-Wl,-u,_rdpgfx_DVCPluginEntry",
+					"-Wl,-u,_disp_DVCPluginEntry",
+					"-framework",
+					Carbon,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					Foundation,
+					"-framework",
+					IOSurface,
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-lz",
+					"-lresolv",
+					"-liconv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.FreeRDPService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Debug;
+		};
+		7E2000512FC0000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = NO;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_ENTITLEMENTS = JTFreeRDPService/JTFreeRDPService.entitlements;
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 11;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JTFreeRDPService/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 2.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Wl,-u,_drdynvc_VirtualChannelEntryEx",
+					"-Wl,-u,_cliprdr_VirtualChannelEntryEx",
+					"-Wl,-u,_rdpgfx_DVCPluginEntry",
+					"-Wl,-u,_disp_DVCPluginEntry",
+					"-framework",
+					Carbon,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					Foundation,
+					"-framework",
+					IOSurface,
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-lz",
+					"-lresolv",
+					"-liconv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.FreeRDPService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Release;
+		};
+		7E5000702FF0000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = YES;
+				CODE_SIGN_ENTITLEMENTS = JTSSHAskpass/JTSSHAskpass.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_TESTABILITY = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.SSHAskpass;
+				PRODUCT_NAME = JTSSHAskpass;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Debug;
+		};
+		7E5000712FF0000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = YES;
+				CODE_SIGN_ENTITLEMENTS = JTSSHAskpass/JTSSHAskpass.entitlements;
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_TESTABILITY = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lljts.JTSTerminal.SSHAskpass;
+				PRODUCT_NAME = JTSSHAskpass;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7E8000523010000000000001 /* Build configuration list for PBXNativeTarget "JTCompanionTransportService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E8000503010000000000001 /* Debug */,
+				7E8000513010000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		302135622FA23D6A009C2A46 /* Build configuration list for PBXProject "JTSTerminal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				302135882FA23D6B009C2A46 /* Debug */,
+				302135892FA23D6B009C2A46 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E1000132FB0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminaliOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E1000162FB0000000000001 /* Debug */,
+				7E1000172FB0000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E1000142FB0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminaliOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E1000182FB0000000000001 /* Debug */,
+				7E1000192FB0000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E1000152FB0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminaliOSUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E10001A2FB0000000000001 /* Debug */,
+				7E10001B2FB0000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E2000522FC0000000000001 /* Build configuration list for PBXNativeTarget "JTFreeRDPService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E2000502FC0000000000001 /* Debug */,
+				7E2000512FC0000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E3000202FD0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminalRDP2" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E3000302FD0000000000001 /* Debug */,
+				7E3000312FD0000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E3000212FD0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminalRDP2Tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E3000322FD0000000000001 /* Debug */,
+				7E3000332FD0000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E4000102FE0000000000001 /* Build configuration list for PBXNativeTarget "JTSTerminalRDP2UITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E4000112FE0000000000001 /* Debug */,
+				7E4000122FE0000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E5000722FF0000000000001 /* Build configuration list for PBXNativeTarget "JTSSHAskpass" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E5000702FF0000000000001 /* Debug */,
+				7E5000712FF0000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		7E8000703010000000000001 /* XCLocalSwiftPackageReference "Packages/JTSCompanionTransport" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/JTSCompanionTransport;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7E0000012FA3000000000001 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.13.0;
+			};
+		};
+		7E1000252FB0000000000001 /* XCRemoteSwiftPackageReference "Citadel" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/orlandos-nl/Citadel.git";
+			requirement = {
+				kind = revision;
+				revision = ae8562f895de06ccb86fdb1cbb65fd99c8976e12;
+			};
+		};
+		7E1000262FB0000000000001 /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.81.0;
+			};
+		};
+		7E1000272FB0000000000001 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Wellz26/swift-nio-ssh.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.3.4;
+			};
+		};
+		7E1000282FB0000000000001 /* XCRemoteSwiftPackageReference "swift-crypto" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-crypto.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.12.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7E8000713010000000000001 /* JTSCompanionServiceRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E8000703010000000000001 /* XCLocalSwiftPackageReference "Packages/JTSCompanionTransport" */;
+			productName = JTSCompanionServiceRuntime;
+		};
+		7E8000723010000000000001 /* JTSCompanionClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E8000703010000000000001 /* XCLocalSwiftPackageReference "Packages/JTSCompanionTransport" */;
+			productName = JTSCompanionClient;
+		};
+		7E8000753010000000000001 /* JTSCompanionDevices */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E8000703010000000000001 /* XCLocalSwiftPackageReference "Packages/JTSCompanionTransport" */;
+			productName = JTSCompanionDevices;
+		};
+		7E8000763010000000000001 /* JTSCompanionDevices */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E8000703010000000000001 /* XCLocalSwiftPackageReference "Packages/JTSCompanionTransport" */;
+			productName = JTSCompanionDevices;
+		};
+		7E8000733010000000000001 /* JTSCompanionIPC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E8000703010000000000001 /* XCLocalSwiftPackageReference "Packages/JTSCompanionTransport" */;
+			productName = JTSCompanionIPC;
+		};
+		7E8000743010000000000001 /* JTSCompanionIPC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E8000703010000000000001 /* XCLocalSwiftPackageReference "Packages/JTSCompanionTransport" */;
+			productName = JTSCompanionIPC;
+		};
+		7E0000022FA3000000000001 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E0000012FA3000000000001 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+		7E1000292FB0000000000001 /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E1000252FB0000000000001 /* XCRemoteSwiftPackageReference "Citadel" */;
+			productName = Citadel;
+		};
+		7E10002A2FB0000000000001 /* NIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E1000262FB0000000000001 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIO;
+		};
+		7E10002B2FB0000000000001 /* NIOSSH */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E1000272FB0000000000001 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
+			productName = NIOSSH;
+		};
+		7E10002C2FB0000000000001 /* Crypto */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E1000282FB0000000000001 /* XCRemoteSwiftPackageReference "swift-crypto" */;
+			productName = Crypto;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 3021355F2FA23D6A009C2A46 /* Project object */;
+}

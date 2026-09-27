@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme
+   LastUpgradeVersion = "2660"
+   version = "1.7">
+   <BuildAction
+      parallelizeBuildables = "YES"
+      buildImplicitDependencies = "YES"
+      buildArchitectures = "Automatic">
+      <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7E3000102FD0000000000001"
+               BuildableName = "JTS Terminal.app"
+               BlueprintName = "JTSTerminalRDP2"
+               ReferencedContainer = "container:JTSTerminal.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7E3000112FD0000000000001"
+               BuildableName = "JTSTerminalRDP2Tests.xctest"
+               BlueprintName = "JTSTerminalRDP2Tests"
+               ReferencedContainer = "container:JTSTerminal.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7E4000072FE0000000000001"
+               BuildableName = "JTSTerminalRDP2UITests.xctest"
+               BlueprintName = "JTSTerminalRDP2UITests"
+               ReferencedContainer = "container:JTSTerminal.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = ""
+      selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      disableMainThreadChecker = "YES"
+      shouldAutocreateTestPlan = "YES">
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7E3000112FD0000000000001"
+               BuildableName = "JTSTerminalRDP2Tests.xctest"
+               BlueprintName = "JTSTerminalRDP2Tests"
+               ReferencedContainer = "container:JTSTerminal.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7E4000072FE0000000000001"
+               BuildableName = "JTSTerminalRDP2UITests.xctest"
+               BlueprintName = "JTSTerminalRDP2UITests"
+               ReferencedContainer = "container:JTSTerminal.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      launchStyle = "0"
+      useCustomWorkingDirectory = "NO"
+      ignoresPersistentStateOnLaunch = "YES"
+      debugDocumentVersioning = "YES"
+      debugServiceExtension = "internal"
+      allowLocationSimulation = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Retain latest Debug and Release"
+               scriptText = "set -euo pipefail&#10;/usr/bin/python3 &quot;${SRCROOT}/scripts/retain_latest_debug_and_release.py&quot; --repo-root &quot;${SRCROOT}&quot; --keep-app &quot;${BUILT_PRODUCTS_DIR}/JTS Terminal.app&quot;&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "7E3000102FD0000000000001"
+                     BuildableName = "JTS Terminal.app"
+                     BlueprintName = "JTSTerminalRDP2"
+                     ReferencedContainer = "container:JTSTerminal.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "7E3000102FD0000000000001"
+            BuildableName = "JTS Terminal.app"
+            BlueprintName = "JTSTerminalRDP2"
+            ReferencedContainer = "container:JTSTerminal.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Release"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Retain latest Debug and Release"
+               scriptText = "set -euo pipefail&#10;/usr/bin/python3 &quot;${SRCROOT}/scripts/retain_latest_debug_and_release.py&quot; --repo-root &quot;${SRCROOT}&quot; --keep-app &quot;${BUILT_PRODUCTS_DIR}/JTS Terminal.app&quot;&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "7E3000102FD0000000000001"
+                     BuildableName = "JTS Terminal.app"
+                     BlueprintName = "JTSTerminalRDP2"
+                     ReferencedContainer = "container:JTSTerminal.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "7E3000102FD0000000000001"
+            BuildableName = "JTS Terminal.app"
+            BlueprintName = "JTSTerminalRDP2"
+            ReferencedContainer = "container:JTSTerminal.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Release"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+</Scheme>
