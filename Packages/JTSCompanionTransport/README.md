@@ -17,6 +17,35 @@ The test fixture is a checked-in snapshot of that version, not a sibling-source
 lookup, symlink or build dependency. Updating protocol versions requires explicit
 fixture and compatibility changes in each endpoint repository.
 
+The active [security-v2 contract](../../Protocols/JTSRelay/2.0.0-security.1/security-v2/PROTOCOL.md)
+has a separate [frozen data-only provenance](../../Protocols/JTSRelay/2.0.0-security.1/PROVENANCE.md).
+It requires audience-bound `JTS-RELAY-AUTH-V2` proofs for
+all relay management calls. The expected canonical origin is selected by the
+caller; it is never adopted from a challenge. There is no V1 authentication
+fallback. Numeric-loopback HTTP remains an explicit development-only option;
+production outer HTTPS/WSS and pinned inner mutual TLS remain encrypted.
+
+## Enrollment authorization and revocation
+
+`JTSRelayEnrollment` encrypts the offer/claim with a high-entropy invitation
+secret, then requires a separate controller-signed confirmation for the exact
+origin, invitation, Windows identity and claim. `prepareConfirmation` creates
+that proof only within the request's original validity window. The app must
+save `attempt.confirmation` before calling `confirm`; a saved proof can be
+retried after expiry without signing a new authorization. An unsigned relay
+`bound` status is rejected. Historical bound/complete vault records missing
+the proof are preserved as `confirmationRequired`; they are not automatically
+promoted to authenticated V2 authorization. Pending attempts retain their code.
+
+Revocation uses a durable signed request naming the exact pairing and all three
+grant IDs. Save `prepareRevocation`'s result before submission. A `pending`
+mailbox response means Windows has not yet acknowledged it. The package reports
+`complete` only after verifying a Windows signature with the locally pinned
+SPKI and the hash of the exact signed request. The owning app must stop local
+routes immediately and preserve its local denial while Windows is offline;
+relay edge removal alone is not proof that remote permissions or tasks stopped.
+Revocation requests do not expire, and cannot target a later pairing epoch.
+
 ## Implemented boundary
 
 - CryptoKit P-256 signing over the versioned relay proof input, DER-SPKI identity,

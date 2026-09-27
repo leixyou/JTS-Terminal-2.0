@@ -10,7 +10,7 @@ extension CompanionDevicesModel {
         _ = try await mcpSnapshot()
         try authorize()
         guard let route = routes[deviceID], !route.busy else { throw deviceFailure("DEVICE_BUSY", "The device is unavailable or another operation is in progress.") }
-        _ = try await relayConfiguration(deviceID: deviceID)
+        _ = try await relayConfiguration(deviceID: deviceID, grantID: grantID)
         try authorize()
         if !route.hasRoute { await connect(deviceID: deviceID, authorize: authorize) }
         try authorize()

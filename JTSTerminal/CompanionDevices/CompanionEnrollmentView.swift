@@ -24,7 +24,7 @@ struct CompanionEnrollmentView: View {
                    "将接入码粘贴到 Windows 上的 Companion。绑定会保留到主动撤销，与 RDP 登录无关。"))
                 .foregroundStyle(.secondary)
             Form {
-                RelayStationPicker(origin: $relay, language: language)
+                TextField(t("HTTPS relay address", "HTTPS 中转地址"), text: $relay).textFieldStyle(.roundedBorder)
                 Toggle(t("Windows 10 / Server 2019 compatibility", "Windows 10 / Server 2019 兼容模式"), isOn: $compatibility)
                 Picker(t("Windows profile", "Windows 连接配置"), selection: $targetID) {
                     Text(t("Device only", "仅添加设备")).tag(UUID?.none)
@@ -110,6 +110,7 @@ struct CompanionEnrollmentView: View {
         case "claimed": return t("Completing device binding", "正在完成设备绑定")
         case "bound": return t("Device bound", "设备已绑定")
         case "complete": return t("Device bound · control verified", "设备已绑定 · 控制通道已验证")
+        case "confirmationRequired": return t("Update Windows and create a new code", "请更新 Windows 端后重新生成接入码")
         case "cancelled": return t("Code cancelled", "接入码已取消")
         default: return t("Code expired", "接入码已过期")
         }

@@ -37,12 +37,14 @@ public actor CompanionEnrollmentStore {
                   old.attempt.request == record.attempt.request, old.targetID == record.targetID,
                   old.targetBinding == record.targetBinding,
                   old.attempt.verifiedClaim == nil || old.attempt.verifiedClaim == record.attempt.verifiedClaim,
+                  old.attempt.confirmation == nil || old.attempt.confirmation == record.attempt.confirmation,
                   old.state != "cancelled" || record.state == "cancelled" else { throw EnrollmentError.changed }
             document.records[index] = record
         } else {
-            // Completed/cancelled entries can be trimmed; live retries are never silently replaced.
+            // Bound/complete records retain the exact epoch required for signed revocation.
+            // Only unbound terminal attempts may be reclaimed; live proof is never evicted.
             if document.records.count >= 64 {
-                document.records.removeAll { ["complete", "cancelled", "expired"].contains($0.state) }
+                document.records.removeAll { ["cancelled", "expired"].contains($0.state) }
             }
             guard document.records.count < 64 else { throw EnrollmentError.capacity }; document.records.append(record)
         }
@@ -54,15 +56,23 @@ public actor CompanionEnrollmentStore {
     private func read(controllerDeviceId: String) async throws -> (String?, Document) {
         guard let text = try await persistence.load() else { return (nil, Document()) }
         guard text.utf8.count <= 2 * 1024 * 1024 else { throw EnrollmentError.invalidMessage }
-        let document = try JSONDecoder().decode(Document.self, from: Data(text.utf8))
+        var document = try JSONDecoder().decode(Document.self, from: Data(text.utf8))
         guard document.version == 1, document.records.count <= 64,
               Set(document.records.map(\.id)).count == document.records.count else { throw EnrollmentError.invalidMessage }
-        for record in document.records { try validate(record, controllerDeviceId: controllerDeviceId) }
+        for index in document.records.indices {
+            // Historical V1 bound receipts were assertions by the relay. Preserve retry material,
+            // but never present them as authenticated V2 authorization merely by reopening the vault.
+            if ["bound", "complete"].contains(document.records[index].state), document.records[index].attempt.confirmation == nil {
+                document.records[index].state = "confirmationRequired"
+            }
+            try validate(document.records[index], controllerDeviceId: controllerDeviceId)
+        }
         return (text, document)
     }
     private func validate(_ record: CompanionEnrollmentRecord, controllerDeviceId: String) throws {
         guard record.id == record.attempt.id,
-              ["creating", "pending", "claimed", "bound", "complete", "cancelled", "expired"].contains(record.state),
+              ["creating", "pending", "claimed", "bound", "complete", "cancelled", "expired", "confirmationRequired"].contains(record.state),
+              !["bound", "complete"].contains(record.state) || record.attempt.confirmation != nil,
               (record.targetID == nil) == (record.targetBinding == nil),
               record.targetBinding.map({ $0.count == 64 }) ?? true else { throw EnrollmentError.invalidMessage }
         try record.attempt.validate(controllerDeviceId: controllerDeviceId)

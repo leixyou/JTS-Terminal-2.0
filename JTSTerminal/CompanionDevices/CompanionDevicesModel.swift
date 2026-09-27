@@ -10,7 +10,8 @@ import JTSRelayEnrollment
 final class CompanionDevicesModel {
     static let windowID = "companion-devices"
     static let shared = CompanionDevicesModel(registry: CompanionDeviceRegistry(persistence: CompanionVaultPersistence()),
-        journal: CompanionJobJournal(persistence: CompanionVaultPersistence(account: "jts.companion.jobs.v1.metadata")))
+        journal: CompanionJobJournal(persistence: CompanionVaultPersistence(account: "jts.companion.jobs.v1.metadata")),
+        revocations: .shared)
 
     private(set) var snapshot: CompanionDeviceSnapshot?
     private(set) var loaded = false
@@ -19,6 +20,7 @@ final class CompanionDevicesModel {
     private var storeBusy = false
     private var storeError: String?
     private let registry: CompanionDeviceRegistry
+    let revocations: CompanionRevocationStore?
     let journal: CompanionJobJournal?
     private let makeConnection: @Sendable () -> any CompanionDeviceConnection
     @ObservationIgnored private var refreshing = false
@@ -26,9 +28,9 @@ final class CompanionDevicesModel {
     @ObservationIgnored private var registryLocked = false
     @ObservationIgnored private var registryWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(registry: CompanionDeviceRegistry, journal: CompanionJobJournal? = nil,
+    init(registry: CompanionDeviceRegistry, journal: CompanionJobJournal? = nil, revocations: CompanionRevocationStore? = nil,
          makeConnection: @escaping @Sendable () -> any CompanionDeviceConnection = { CompanionTransportClient() }) {
-        self.registry = registry; self.journal = journal; self.makeConnection = makeConnection
+        self.registry = registry; self.journal = journal; self.makeConnection = makeConnection; self.revocations = revocations
     }
 
     var selected: CompanionSavedDevice? { snapshot?.devices.first { $0.id == selectedID } }
@@ -136,6 +138,7 @@ final class CompanionDevicesModel {
         do {
             _ = try await trustedConfiguration(route, token: token)
             try authorize?()
+            try await revocations?.requireAllowed(deviceID: id, grantID: grant)
             let status = try await client.status(grantID: grant)
             _ = try await trustedConfiguration(route, token: token)
             try authorize?()
@@ -147,8 +150,9 @@ final class CompanionDevicesModel {
     }
 
     /// Re-reads encrypted trust for every independent lane; never exports private material to MCP.
-    func relayConfiguration(deviceID: UUID) async throws -> CompanionIPCOpen {
-        try await withRegistry { try await registry.openConfiguration(deviceID: deviceID) }
+    func relayConfiguration(deviceID: UUID, grantID: UUID? = nil) async throws -> CompanionIPCOpen {
+        try await revocations?.requireAllowed(deviceID: deviceID, grantID: grantID)
+        return try await withRegistry { try await registry.openConfiguration(deviceID: deviceID) }
     }
 
     func enrollmentClient(relayOrigin: String) async throws -> EnrollmentClient {
@@ -187,7 +191,7 @@ final class CompanionDevicesModel {
 
     func trustedConfiguration(_ route: CompanionDeviceRoute, token: UUID) async throws -> CompanionIPCOpen {
         guard route.generation == token else { throw CancellationError() }
-        let configuration = try await withRegistry { try await registry.openConfiguration(deviceID: route.deviceID) }
+        let configuration = try await relayConfiguration(deviceID: route.deviceID, grantID: route.verifiedGrant)
         guard route.generation == token else { throw CancellationError() }
         return configuration
     }

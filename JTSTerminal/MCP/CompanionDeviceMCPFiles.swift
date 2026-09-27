@@ -11,7 +11,7 @@ extension CompanionDeviceMCPHandler {
             throw WindowsMCPToolError(code: .permissionDenied, message: "This target has no Windows-issued file lane grant. Re-import its complete public enrollment bundle.")
         }
         let plan = try CompanionDeviceFilePlan(request)
-        let configuration = try await devices.relayConfiguration(deviceID: binding.deviceID)
+        let configuration = try await devices.relayConfiguration(deviceID: binding.deviceID, grantID: grant)
         try authorize()
         let lane = CompanionLaneClient()
         do {
@@ -19,13 +19,13 @@ extension CompanionDeviceMCPHandler {
             try authorize()
             let client = CompanionFileClient(lane: lane, grantID: grant)
             let result = try await plan.perform { operation, parameters in
-                _ = try await self.devices.relayConfiguration(deviceID: binding.deviceID)
+                _ = try await self.devices.relayConfiguration(deviceID: binding.deviceID, grantID: grant)
                 guard try await self.bindings.binding(targetID: binding.targetID, targetBinding: binding.targetBinding) == binding else {
                     throw WindowsMCPToolError(code: .permissionDenied, message: "The file route binding was changed or removed.")
                 }
                 try authorize()
                 let bytes = try await client.request(operation, parametersJSON: JSONSerialization.data(withJSONObject: parameters, options: .sortedKeys))
-                _ = try await self.devices.relayConfiguration(deviceID: binding.deviceID)
+                _ = try await self.devices.relayConfiguration(deviceID: binding.deviceID, grantID: grant)
                 try authorize()
                 guard let result = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] else { throw CompanionClientError.invalidReply }
                 return result

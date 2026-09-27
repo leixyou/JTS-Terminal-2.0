@@ -9,11 +9,21 @@ extension CompanionDeviceMCPHandler {
         let model = CompanionEnrollmentModel.shared
         try authorize()
         if request.action == "revokeRelay" {
+            let revocations = CompanionRevocationModel.shared
+            try await revocations.refresh()
+            let currentBinding = try await bindings.binding(targetID: request.targetID, targetBinding: targetBinding)
+            if let prior = revocations.records.last(where: {
+                $0.targetID == request.targetID && $0.targetBinding == targetBinding
+            }), prior.receipt == nil || currentBinding == nil {
+                revocations.start(); await revocations.retryPending(); try authorize()
+                let state = revocations.records.first(where: { $0.request.revocationId == prior.request.revocationId })?.state ?? "revocationPending"
+                return envelope(request, extra: ["state": state, "ready": false, "windowsRevocationConfirmed": state == "revoked"])
+            }
             guard let binding = try await bindings.binding(targetID: request.targetID, targetBinding: targetBinding),
                   let snapshot = try await devices.mcpSnapshot(),
                   let device = snapshot.devices.first(where: { $0.id == binding.deviceID }) else { throw EnrollmentError.changed }
-            try await model.revoke(device: device, targetID: request.targetID, authorize: authorize)
-            return envelope(request, extra: ["state": "revoked", "ready": false])
+            let state = try await model.revoke(device: device, targetID: request.targetID, currentBinding: binding, authorize: authorize)
+            return envelope(request, extra: ["state": state, "ready": false, "windowsRevocationConfirmed": state == "revoked"])
         }
         let record: CompanionEnrollmentRecord
         if request.action == "createCode" {

@@ -28,7 +28,7 @@ actor ProtocolHTTPStub: RelayHTTPTransport {
             let proof = try JSONDecoder().decode(RelayProof.self, from: request.httpBody!)
             let payload = Data(base64Encoded: proof.payloadBase64)!
             let challenge = RelayChallenge(challengeId: challengeID, nonceBase64: nonce, expiresAtUnixSeconds: expiry)
-            let canonical = try RelayIdentity.canonicalProof(deviceID: identity.deviceID, operation: .sessions,
+            let canonical = try RelayIdentity.canonicalProof(endpoint: try RelayEndpoint(URL(string: "https://relay.example")!), deviceID: identity.deviceID, operation: .sessions,
                 challenge: challenge, payload: payload)
             let publicKey = try P256.Signing.PublicKey(derRepresentation: identity.publicKeySPKI)
             let signature = try P256.Signing.ECDSASignature(rawRepresentation: Data(base64Encoded: proof.signatureBase64)!)

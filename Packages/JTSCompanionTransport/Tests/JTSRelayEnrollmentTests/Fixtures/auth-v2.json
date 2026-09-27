@@ -1,0 +1,13 @@
+{
+  "relayOrigin": "https://relay.example.test:9443",
+  "controllerSPKIBase64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li/hp/m47n60p8D54WK84zV2sxXs7LtkBoN79R9Q==",
+  "deviceId": "5cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd3",
+  "operation": "enrollment",
+  "challengeId": "6a99e63c-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "nonceBase64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "payloadBase64": "eyJhY3Rpb24iOiJzdGF0dXMiLCJpbnZpdGF0aW9uSWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifQ==",
+  "payloadHash": "5ca924e4dc1b823922e1d5fec4ac3494efd581d0b5aab31894e51a526b6e2cc3",
+  "transcriptBase64": "SlRTLVJFTEFZLUFVVEgtVjIKaHR0cHM6Ly9yZWxheS5leGFtcGxlLnRlc3Q6OTQ0Mwo1Y2QyNTJmYjBjZTg5MzI0MzZmYWY4Y2NkMTA0MDk4MWI4OWVlNGFkNmI5ZmU5ZTJhMmI3ZTcxYWFjYjI3Y2QzCmVucm9sbG1lbnQKNmE5OWU2M2MtYWFhYS00YWFhLThhYWEtYWFhYWFhYWFhYWFhCkFBRUNBd1FGQmdjSUNRb0xEQTBPRHhBUkVoTVVGUllYR0JrYUd4d2RIaDg9CjVjYTkyNGU0ZGMxYjgyMzkyMmUxZDVmZWM0YWMzNDk0ZWZkNTgxZDBiNWFhYjMxODk0ZTUxYTUyNmI2ZTJjYzM=",
+  "signatureBase64": "gHfCpJMiD+zRPhx9OH9L+HAqKnLQ0rZnG8LRIkhxEo3iHXDVq6V9q02QGlG6CHiWDuoGgEo686mQzfTUBIygVg==",
+  "description": "PUBLIC TEST VECTOR ONLY. Fixed private scalars 1 and 2 are not production identities. Independently generated with Python cryptography."
+}

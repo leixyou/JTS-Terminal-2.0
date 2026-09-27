@@ -28,7 +28,7 @@ extension RDPDesktopRuntimeStore {
                                    message: "This device route has no remote-desktop relay grant.")
         }
         let model = CompanionDevicesModel.shared
-        let relay = try await model.relayConfiguration(deviceID: binding.deviceID)
+        let relay = try await model.relayConfiguration(deviceID: binding.deviceID, grantID: grantID)
         try requireRelayAttempt(active, attempt: attempt)
         let bridge = try await RDPRelaySocketBridge.open(configuration: relay, grantID: grantID)
         do {
@@ -37,7 +37,7 @@ extension RDPDesktopRuntimeStore {
             guard try await store.binding(targetID: binding.targetID, targetBinding: binding.targetBinding) == binding else {
                 throw CompanionTargetRouteError.changed
             }
-            _ = try await model.relayConfiguration(deviceID: binding.deviceID)
+            _ = try await model.relayConfiguration(deviceID: binding.deviceID, grantID: grantID)
             try requireRelayAttempt(active, attempt: attempt)
             var remaining = deadlineMilliseconds
             if let budget = deadlineMilliseconds {

@@ -95,18 +95,24 @@ public struct EnrollmentReceipt: Codable, Sendable {
     public let expiresAtUnixSeconds: Int64
     public let offerBase64: String
     public let claim: EnrollmentClaim?
+    public let confirmation: EnrollmentConfirmation?
 
     static func decode(_ data: Data) throws -> Self {
         let object = try EnrollmentWire.object(data, required: ["invitationId", "controllerDeviceId", "state",
-            "expiresAtUnixSeconds", "offerBase64"], optional: ["claim"])
+            "expiresAtUnixSeconds", "offerBase64"], optional: ["claim", "confirmation"])
         if let claim = object["claim"] {
             _ = try EnrollmentWire.object(JSONSerialization.data(withJSONObject: claim),
                 required: ["peerSPKIBase64", "responseBase64", "signatureBase64", "claimHash"])
         }
+        if let confirmation = object["confirmation"] {
+            _ = try EnrollmentConfirmation.decode(JSONSerialization.data(withJSONObject: confirmation))
+        }
         let value = try JSONDecoder().decode(Self.self, from: data)
         guard EnrollmentWire.validID(value.invitationId),
               value.controllerDeviceId.count == 64, value.expiresAtUnixSeconds > 0,
-              ![State.claimed, .bound].contains(value.state) || value.claim != nil else { throw EnrollmentError.invalidResponse }
+              ![State.claimed, .bound].contains(value.state) || value.claim != nil,
+              value.state != .bound || value.confirmation != nil,
+              value.confirmation == nil || [State.bound, .cancelled].contains(value.state) else { throw EnrollmentError.invalidResponse }
         return value
     }
 }

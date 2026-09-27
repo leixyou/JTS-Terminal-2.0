@@ -30,7 +30,7 @@ let package = Package(
         .target(name: "JTSCompanionServiceRuntime", dependencies: ["JTSCompanionTransport", "JTSCompanionIPC"]),
         .testTarget(name: "JTSCompanionIPCTests", dependencies: ["JTSCompanionIPC"]),
         .testTarget(name: "JTSCompanionClientTests", dependencies: ["JTSCompanionClient", "JTSCompanionIPC"]),
-        .testTarget(name: "JTSCompanionDevicesTests", dependencies: ["JTSCompanionDevices"]),
+        .testTarget(name: "JTSCompanionDevicesTests", dependencies: ["JTSCompanionDevices"], resources: [.copy("Fixtures")]),
         .testTarget(name: "JTSRelayEnrollmentTests", dependencies: ["JTSRelayEnrollment"], resources: [.copy("Fixtures")]),
         .testTarget(name: "JTSCompanionServiceRuntimeTests", dependencies: ["JTSCompanionServiceRuntime", "JTSCompanionIPC"]),
         .testTarget(name: "JTSCompanionTransportTests", dependencies: ["JTSCompanionTransport", "JTSCompanionClient"],

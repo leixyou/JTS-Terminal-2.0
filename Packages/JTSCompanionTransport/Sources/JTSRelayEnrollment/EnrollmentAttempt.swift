@@ -8,6 +8,7 @@ public struct EnrollmentAttempt: Codable, Sendable, CustomStringConvertible, Cus
     public let offer: Data
     public let expiresAtUnixSeconds: Int64
     public var verifiedClaim: EnrollmentClaim?
+    public var confirmation: EnrollmentConfirmation?
     public var description: String { "EnrollmentAttempt (credentials omitted)" }
     public var debugDescription: String { description }
 
@@ -33,6 +34,7 @@ public struct EnrollmentAttempt: Codable, Sendable, CustomStringConvertible, Cus
             throw EnrollmentError.changed
         }
         if let verifiedClaim { _ = try bundle(for: verifiedClaim) }
+        if let confirmation { try confirmation.verify(attempt: self) }
     }
 
     public func check(_ receipt: EnrollmentReceipt) throws {
@@ -40,6 +42,13 @@ public struct EnrollmentAttempt: Codable, Sendable, CustomStringConvertible, Cus
         guard receipt.invitationId == id, receipt.controllerDeviceId == requestValue.controllerDeviceID,
               receipt.offerBase64 == offer.base64EncodedString(), receipt.expiresAtUnixSeconds == expiresAtUnixSeconds,
               verifiedClaim == nil || receipt.claim == verifiedClaim else { throw EnrollmentError.changed }
+        if receipt.state == .bound && receipt.confirmation == nil { throw EnrollmentError.invalidResponse }
+        if let confirmation = receipt.confirmation {
+            var observed = self
+            observed.verifiedClaim = receipt.claim
+            try confirmation.verify(attempt: observed)
+            guard self.confirmation == nil || self.confirmation == confirmation else { throw EnrollmentError.changed }
+        }
     }
 
     /// Only a definitive node rejection can terminate an expired, uncommitted retry.

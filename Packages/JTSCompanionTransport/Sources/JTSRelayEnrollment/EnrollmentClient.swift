@@ -86,33 +86,54 @@ public actor EnrollmentClient {
     public func cancel(_ attempt: EnrollmentAttempt) async throws -> EnrollmentReceipt {
         try await receipt(action: "cancel", attempt: attempt)
     }
-    public func confirm(_ attempt: EnrollmentAttempt) async throws -> EnrollmentReceipt {
-        guard let claim = attempt.verifiedClaim else { throw EnrollmentError.invalidMessage }
-        _ = try attempt.bundle(for: claim)
-        return try await receipt(action: "confirm", attempt: attempt, claimHash: claim.claimHash)
-    }
-    public func revoke(peerDeviceId: String) async throws {
-        guard peerDeviceId.count == 64, peerDeviceId.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
-            throw EnrollmentError.invalidIdentity
-        }
-        let data = try await call(["action": "revoke", "peerDeviceId": peerDeviceId])
-        let object = try EnrollmentWire.object(data, required: ["peerDeviceId", "state"])
-        guard object["peerDeviceId"] as? String == peerDeviceId, object["state"] as? String == "revoked" else {
-            throw EnrollmentError.invalidResponse
-        }
-    }
-    private func receipt(action: String, attempt: EnrollmentAttempt, claimHash: String? = nil) async throws -> EnrollmentReceipt {
+    /// Save the returned value in the encrypted attempt before calling confirm; retries reuse it exactly.
+    public func prepareConfirmation(_ attempt: EnrollmentAttempt, now: Date = Date()) throws -> EnrollmentConfirmation {
         try attempt.validate(controllerDeviceId: controllerDeviceId)
         guard try EnrollmentCode(attempt.code).relayOrigin == relayOrigin else { throw EnrollmentError.changed }
-        var payload = ["action": action, "invitationId": attempt.id]
-        if let claimHash { payload["claimHash"] = claimHash }
+        if let existing = attempt.confirmation { return existing }
+        return try EnrollmentConfirmation(attempt: attempt, key: key, now: now)
+    }
+    public func confirm(_ attempt: EnrollmentAttempt) async throws -> EnrollmentReceipt {
+        guard let claim = attempt.verifiedClaim, let confirmation = attempt.confirmation else { throw EnrollmentError.invalidMessage }
+        _ = try attempt.bundle(for: claim)
+        try confirmation.verify(attempt: attempt)
+        return try await receipt(action: "confirm", attempt: attempt, confirmation: confirmation)
+    }
+    /// Persist this request before submission. A pending mailbox response is not proof of Windows revocation.
+    public func prepareRevocation(_ bundle: EnrollmentBundle, now: Date = Date()) throws -> EnrollmentRevocation {
+        try EnrollmentRevocation(bundle: bundle, origin: relayOrigin, key: key, now: now)
+    }
+    public func submitRevocation(_ revocation: EnrollmentRevocation, peerSPKI: Data) async throws -> EnrollmentRevocationStatus {
+        try await revocationCall(revocation, peerSPKI: peerSPKI, submit: true)
+    }
+    public func revocationStatus(_ revocation: EnrollmentRevocation, peerSPKI: Data) async throws -> EnrollmentRevocationStatus {
+        try await revocationCall(revocation, peerSPKI: peerSPKI, submit: false)
+    }
+    private func revocationCall(_ revocation: EnrollmentRevocation, peerSPKI: Data, submit: Bool) async throws -> EnrollmentRevocationStatus {
+        try revocation.verify(controllerSPKI: key.publicKey.derRepresentation)
+        try revocation.verifyPeer(peerSPKI)
+        guard revocation.relayOrigin == relayOrigin else { throw EnrollmentError.changed }
+        let payload: [String: Any] = submit
+            ? ["action": "submit", "revocation": try JSONSerialization.jsonObject(with: EnrollmentWire.encode(revocation))]
+            : ["action": "status", "revocationId": revocation.revocationId]
+        return try EnrollmentRevocationStatus.decode(await call(payload, operation: "revocations"), expected: revocation,
+            controllerSPKI: key.publicKey.derRepresentation, peerSPKI: peerSPKI)
+    }
+    private func receipt(action: String, attempt: EnrollmentAttempt, confirmation: EnrollmentConfirmation? = nil) async throws -> EnrollmentReceipt {
+        try attempt.validate(controllerDeviceId: controllerDeviceId)
+        guard try EnrollmentCode(attempt.code).relayOrigin == relayOrigin else { throw EnrollmentError.changed }
+        var payload: [String: Any] = ["action": action, "invitationId": attempt.id]
+        if let confirmation {
+            payload["claimHash"] = confirmation.claimHash
+            payload["confirmation"] = try JSONSerialization.jsonObject(with: EnrollmentWire.encode(confirmation))
+        }
         let value = try EnrollmentReceipt.decode(await call(payload)); try attempt.check(value); return value
     }
-    private func call(_ payload: [String: Any]) async throws -> Data {
+    private func call(_ payload: [String: Any], operation: String = "enrollment") async throws -> Data {
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
         guard data.count <= 16384 else { throw EnrollmentError.invalidMessage }
         let challengeData = try await post("/v1/challenges", data: JSONSerialization.data(withJSONObject:
-            ["deviceId": controllerDeviceId, "operation": "enrollment"]))
+            ["deviceId": controllerDeviceId, "operation": operation]))
         let object = try EnrollmentWire.object(challengeData, required: ["challengeId", "nonceBase64", "expiresAtUnixSeconds"])
         struct Challenge: Decodable { let challengeId, nonceBase64: String; let expiresAtUnixSeconds: Int64 }
         let challenge = try JSONDecoder().decode(Challenge.self, from: challengeData)
@@ -123,9 +144,9 @@ public actor EnrollmentClient {
               challenge.expiresAtUnixSeconds > now, challenge.expiresAtUnixSeconds <= now + 65 else {
             throw EnrollmentError.invalidResponse
         }
-        let transcript = Data(["JTS-RELAY-AUTH-V1", controllerDeviceId, "enrollment", challenge.challengeId,
+        let transcript = Data(["JTS-RELAY-AUTH-V2", relayOrigin, controllerDeviceId, operation, challenge.challengeId,
                                challenge.nonceBase64, EnrollmentWire.hash(data)].joined(separator: "\n").utf8)
-        return try await post("/v1/enrollment", data: JSONSerialization.data(withJSONObject:
+        return try await post("/v1/\(operation)", data: JSONSerialization.data(withJSONObject:
             ["deviceId": controllerDeviceId, "challengeId": challenge.challengeId, "payloadBase64": data.base64EncodedString(),
              "signatureBase64": try key.signature(for: transcript).rawRepresentation.base64EncodedString()]))
     }

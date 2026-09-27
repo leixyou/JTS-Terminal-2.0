@@ -112,7 +112,7 @@ public actor RelayHTTPClient {
     private func authenticated<T: Decodable>(_ operation: RelayOperation, payload: Data) async throws -> T {
         let challenge: RelayChallenge = try await request(path: "/v1/challenges",
             body: RelayJSON.encode(ChallengeRequest(deviceId: deviceID, operation: operation)))
-        let proof = try identity.proof(operation: operation, challenge: challenge, payload: payload)
+        let proof = try identity.proof(endpoint: endpoint, operation: operation, challenge: challenge, payload: payload)
         return try await request(path: "/v1/\(operation.rawValue)", body: RelayJSON.encode(proof))
     }
 

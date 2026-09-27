@@ -5,6 +5,8 @@ import JTSCompanionDevices
 
 struct CompanionDevicesView: View {
     @State var model: CompanionDevicesModel = .shared
+    @State private var revocations: CompanionRevocationModel = .shared
+    @State private var enrollment: CompanionEnrollmentModel = .shared
     @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.defaultLanguage.rawValue
     @State private var adding = false
     @State private var enrolling = false
@@ -63,7 +65,7 @@ struct CompanionDevicesView: View {
                 .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(12)
         }
         .frame(minWidth: 740, minHeight: 520)
-        .task { await model.refresh() }
+        .task { await model.refresh(); revocations.start(); try? await enrollment.refresh() }
         .onChange(of: model.selectedID) { _, _ in grantID = "" }
         .sheet(isPresented: $adding) { CompanionAddDeviceView(model: model, language: language) }
         .sheet(isPresented: $enrolling) { CompanionEnrollmentView(language: language) }
@@ -118,6 +120,21 @@ struct CompanionDevicesView: View {
                     Text(t("Existing AI desktop control includes delegated pairing. Import the Windows installer’s public enrollment bundle through jts_device_status to verify its grant and bind the target without another approval. Relay HTTPS/WSS stays encrypted with server certificate validation skipped by default; inner TLS verifies the pinned peer.",
                            "已有的 AI 桌面控制授权包含配对委托。通过 jts_device_status 导入 Windows 安装器的公开配对包，即可校验授权并绑定目标，无需再次确认。中继 HTTPS/WSS 默认跳过证书校验但保持加密，内层 TLS 仍校验固定设备身份。"))
                         .foregroundStyle(.secondary)
+                    if let revocation = revocations.records.last(where: { $0.deviceID == device.id }) {
+                        Label(revocation.receipt == nil
+                              ? t("Waiting for Windows to revoke permissions and stop tasks. Reconnect retries automatically.", "等待 Windows 撤销权限并停止任务，恢复联网后会自动继续。")
+                              : t("Windows confirmed that this binding was revoked and its tasks stopped.", "Windows 已确认本次绑定权限撤销，相关任务已停止。"),
+                              systemImage: revocation.receipt == nil ? "clock" : "checkmark.shield")
+                    }
+                    if let record = enrollment.records.last(where: { $0.deviceID == device.id && ["bound", "complete"].contains($0.state) }) {
+                        Button(t("Revoke device permissions", "撤销设备授权"), role: .destructive) {
+                            Task {
+                                do { _ = try await enrollment.revoke(device: device, targetID: record.targetID, authorize: {}) }
+                                catch { enrollment.present(error) }
+                            }
+                        }.disabled(enrollment.busy)
+                    }
+                    if let error = enrollment.errorCode { Text(error).font(.caption).foregroundStyle(.red) }
                     if device.revokedAt != nil {
                         Label(t("Local trust revoked. Windows permissions are unchanged.", "本机信任已撤销，Windows 端权限未改变。"), systemImage: "lock.slash")
                     } else {

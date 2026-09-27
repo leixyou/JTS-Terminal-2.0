@@ -23,16 +23,16 @@ public struct RelayIdentity: Sendable, CustomStringConvertible, CustomDebugStrin
         value.utf8.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }
 
-    public func proof(operation: RelayOperation, challenge: RelayChallenge,
+    public func proof(endpoint: RelayEndpoint, operation: RelayOperation, challenge: RelayChallenge,
                       payload: Data, now: Date = Date()) throws -> RelayProof {
-        let canonical = try Self.canonicalProof(deviceID: deviceID, operation: operation,
+        let canonical = try Self.canonicalProof(endpoint: endpoint, deviceID: deviceID, operation: operation,
                                                challenge: challenge, payload: payload, now: now)
         return RelayProof(deviceId: deviceID, challengeId: challenge.challengeId,
                           payloadBase64: payload.base64EncodedString(),
                           signatureBase64: try key.signature(for: canonical).rawRepresentation.base64EncodedString())
     }
 
-    public static func canonicalProof(deviceID: String, operation: RelayOperation,
+    public static func canonicalProof(endpoint: RelayEndpoint, deviceID: String, operation: RelayOperation,
                                       challenge: RelayChallenge, payload: Data,
                                       now: Date = Date()) throws -> Data {
         guard validateDeviceID(deviceID), UUID(uuidString: challenge.challengeId) != nil,
@@ -48,7 +48,7 @@ public struct RelayIdentity: Sendable, CustomStringConvertible, CustomDebugStrin
             throw CompanionTransportError.invalidChallenge
         }
         let hash = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
-        return Data(["JTS-RELAY-AUTH-V1", deviceID, operation.rawValue, challenge.challengeId,
+        return Data(["JTS-RELAY-AUTH-V2", endpoint.canonicalOrigin, deviceID, operation.rawValue, challenge.challengeId,
                      challenge.nonceBase64, hash].joined(separator: "\n").utf8)
     }
 }

@@ -49,3 +49,5 @@ development build does not certify that review gate.
 
 Apple documents why an ATS-protected domain cannot loosen server trust through
 a delegate in [Performing manual server trust authentication](https://developer.apple.com/documentation/Foundation/performing-manual-server-trust-authentication).
+
+See [the security update](ACCESS_CODE_SECURITY_UPDATE.md) for the required three-component upgrade, signed confirmation and endpoint revocation semantics.

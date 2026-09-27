@@ -22,13 +22,15 @@ public enum RelayLimits {
 /// Transport addressing is independent from the paired endpoint's identity.
 public struct RelayEndpoint: Equatable, Sendable {
     public let url: URL
+    public var canonicalOrigin: String { url.absoluteString }
 
     public init(_ url: URL, allowLoopbackHTTP: Bool = false) throws {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let host = components.host, !host.isEmpty,
               components.user == nil, components.password == nil,
               components.query == nil, components.fragment == nil,
-              components.path.isEmpty || components.path == "/" else {
+              components.path.isEmpty || components.path == "/",
+              components.port.map({ (1...65535).contains($0) }) ?? true else {
             throw CompanionTransportError.invalidEndpoint
         }
         let secure = components.scheme == "https"
@@ -36,7 +38,11 @@ public struct RelayEndpoint: Equatable, Sendable {
         guard secure || (allowLoopbackHTTP && loopback && components.scheme == "http") else {
             throw CompanionTransportError.invalidEndpoint
         }
-        self.url = url
+        components.host = host.lowercased()
+        components.path = ""
+        if components.port == (secure ? 443 : 80) { components.port = nil }
+        guard let normalized = components.url else { throw CompanionTransportError.invalidEndpoint }
+        self.url = normalized
     }
 
     public func httpURL(path: String) throws -> URL {

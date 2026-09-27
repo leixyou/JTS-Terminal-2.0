@@ -223,6 +223,10 @@ struct RemoteProcessShutdownReport: Equatable {
 @MainActor
 final class JTSTerminalApplicationDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if ENABLE_RDP_2
+        if ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil,
+           ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil { CompanionRevocationModel.shared.start() }
+        #endif
         MainWindowLifecycle.scheduleLaunchActivationRecovery()
     }
 

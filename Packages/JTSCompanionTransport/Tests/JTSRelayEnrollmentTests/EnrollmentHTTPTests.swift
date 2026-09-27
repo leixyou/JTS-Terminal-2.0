@@ -61,6 +61,9 @@ final class EnrollmentHTTPTests: XCTestCase {
         attempt.verifiedClaim = observed.claim
         let imported = try attempt.bundle(for: XCTUnwrap(observed.claim))
         XCTAssertEqual(imported.grantID, request.grantID)
+        attempt.confirmation = try await controller.prepareConfirmation(attempt)
+        // The application persists this attempt before sending confirm.
+        attempt = try JSONDecoder().decode(EnrollmentAttempt.self, from: EnrollmentWire.encode(attempt))
         let bound = try await controller.confirm(attempt)
         XCTAssertEqual(bound.state, .bound)
         // Lost confirmation reply and a failed/nonexistent RDP login do not consume a second code.
@@ -70,7 +73,9 @@ final class EnrollmentHTTPTests: XCTestCase {
         XCTAssertEqual(repeatedConfirm.state, .bound)
         XCTAssertEqual(recovered.state, .bound)
         XCTAssertEqual(repeatedCreate.state, .bound)
-        try await controller.revoke(peerDeviceId: imported.peerDeviceID)
+        let revocation = try await controller.prepareRevocation(imported)
+        let pendingRevoke = try await controller.submitRevocation(revocation, peerSPKI: imported.peerSPKI)
+        XCTAssertEqual(pendingRevoke.state, .pending) // No Windows completion proof has been submitted by this fixture.
         let revoked = try await post("receipt")
         XCTAssertEqual(revoked.state, .cancelled)
     }

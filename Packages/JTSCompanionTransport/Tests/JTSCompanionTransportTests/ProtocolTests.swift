@@ -14,10 +14,8 @@ final class ProtocolTests: XCTestCase {
         let vector = try JSONDecoder().decode(Vector.self, from: Data(contentsOf: url))
         let spki = Data(base64Encoded: vector.publicKeySpkiBase64)!
         XCTAssertEqual(RelayIdentity.deviceID(publicKeySPKI: spki), vector.deviceId)
-        let challenge = RelayChallenge(challengeId: vector.challengeId, nonceBase64: vector.nonceBase64,
-                                       expiresAtUnixSeconds: 1060)
-        let canonical = try RelayIdentity.canonicalProof(deviceID: vector.deviceId, operation: vector.operation,
-            challenge: challenge, payload: Data(base64Encoded: vector.payloadBase64)!, now: Date(timeIntervalSince1970: 1000))
+        // Retain verification of the immutable historical vector; production signs only audience-bound V2.
+        let canonical = Data(vector.canonicalUtf8.utf8)
         XCTAssertEqual(String(decoding: canonical, as: UTF8.self), vector.canonicalUtf8)
         XCTAssertFalse(canonical.last == 10)
         let publicKey = try P256.Signing.PublicKey(derRepresentation: spki)
@@ -31,12 +29,12 @@ final class ProtocolTests: XCTestCase {
         let identity = RelayIdentity(privateKey: key)
         let challenge = RelayChallenge(challengeId: UUID().uuidString, nonceBase64: Data(repeating: 9, count: 32).base64EncodedString(),
                                        expiresAtUnixSeconds: 1060)
-        let proof = try identity.proof(operation: .presence, challenge: challenge,
+        let proof = try identity.proof(endpoint: try RelayEndpoint(URL(string: "https://relay.example")!), operation: .presence, challenge: challenge,
                                       payload: Data("{}".utf8), now: Date(timeIntervalSince1970: 1000))
         XCTAssertEqual(Data(base64Encoded: proof.signatureBase64)?.count, 64)
-        XCTAssertThrowsError(try identity.proof(operation: .presence, challenge: challenge,
+        XCTAssertThrowsError(try identity.proof(endpoint: try RelayEndpoint(URL(string: "https://relay.example")!), operation: .presence, challenge: challenge,
             payload: Data("{}".utf8), now: Date(timeIntervalSince1970: 1060)))
-        XCTAssertThrowsError(try identity.proof(operation: .presence, challenge: challenge,
+        XCTAssertThrowsError(try identity.proof(endpoint: try RelayEndpoint(URL(string: "https://relay.example")!), operation: .presence, challenge: challenge,
             payload: Data("[]".utf8), now: Date(timeIntervalSince1970: 1000)))
     }
 

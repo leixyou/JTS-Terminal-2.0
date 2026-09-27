@@ -30,6 +30,10 @@ final class CompanionEnrollmentModel {
         guard let identity = try await devices.mcpSnapshot(createIdentity: true) else { throw CompanionDeviceError.notInitialized }
         try await refresh()
         let origin = try EnrollmentWire.origin(relayURL)
+        try await CompanionRevocationModel.shared.refresh()
+        guard !CompanionRevocationModel.shared.records.contains(where: {
+            $0.receipt == nil && $0.targetID == targetID && $0.targetBinding == targetBinding
+        }) else { throw EnrollmentError.remote("WINDOWS_REVOCATION_PENDING") }
         if let previous = records.last(where: {
             $0.targetID == targetID && $0.targetBinding == targetBinding &&
             ["creating", "pending", "claimed", "bound"].contains($0.state) &&
@@ -77,20 +81,25 @@ final class CompanionEnrollmentModel {
         if let failure = error as? EnrollmentError, case .remote(let code) = failure { errorCode = code }
         else { errorCode = "ENROLLMENT_RETRY_REQUIRED" }
     }
-    func revoke(device: CompanionSavedDevice, targetID: UUID,
-                authorize: @escaping CompanionDevicesModel.MCPAuthorityCheck) async throws {
+    func revoke(device: CompanionSavedDevice, targetID: UUID?,
+                currentBinding: CompanionTargetRouteBinding? = nil,
+                authorize: @escaping CompanionDevicesModel.MCPAuthorityCheck) async throws -> String {
         guard !busy else { throw EnrollmentError.busy }; busy = true; defer { busy = false }
         try authorize(); try await refresh()
-        let client = try await devices.enrollmentClient(relayOrigin: device.relayURL)
-        try authorize(); try await client.revoke(peerDeviceId: device.peerDeviceID); try authorize()
-        devices.routes[device.id]?.disconnect()
-        for var record in records {
-            guard let claim = record.attempt.verifiedClaim,
-                  let bundle = try? record.attempt.bundle(for: claim), bundle.peerDeviceID == device.peerDeviceID,
-                  try EnrollmentCode(record.attempt.code).relayOrigin == device.relayURL else { continue }
-            record.state = "cancelled"; try await save(record)
+        var route = currentBinding
+        if route == nil, let targetID,
+           let targetFingerprint = records.last(where: { $0.targetID == targetID && $0.deviceID == device.id })?.targetBinding {
+            route = try await bindings.binding(targetID: targetID, targetBinding: targetFingerprint)
         }
-        try await bindings.remove(targetID: targetID)
+        let candidates = records.filter { $0.targetID == targetID && $0.deviceID == device.id }
+        let epoch = try CompanionRevocationEpoch.resolve(device: device, route: route, records: candidates)
+        let queued = try await CompanionRevocationModel.shared.enqueue(bundle: epoch.bundle,
+            deviceID: device.id, targetID: targetID, targetBinding: route?.targetBinding ?? epoch.record?.targetBinding, authorize: authorize)
+        if var record = epoch.record { record.state = "cancelled"; try await save(record) }
+        await CompanionRevocationModel.shared.retryPending()
+        return CompanionRevocationModel.shared.records.first(where: {
+            $0.request.revocationId == queued.request.revocationId
+        })?.state ?? "revocationPending"
     }
     private func advanceRecord(_ original: CompanionEnrollmentRecord,
                                authorize: @escaping CompanionDevicesModel.MCPAuthorityCheck) async throws -> CompanionEnrollmentRecord {
@@ -112,11 +121,16 @@ final class CompanionEnrollmentModel {
         try authorize()
         if let claim = receipt.claim, [.claimed, .bound].contains(receipt.state) {
             _ = try record.attempt.bundle(for: claim)
-            record.attempt.verifiedClaim = claim; record.state = receipt.state.rawValue
+            record.attempt.verifiedClaim = claim
+            if let confirmation = receipt.confirmation { record.attempt.confirmation = confirmation }
+            record.state = receipt.state.rawValue
             // Save verified evidence before a possibly ambiguous remote commit response.
             try await save(record)
             if receipt.state == .claimed {
-                try authorize(); receipt = try await client.confirm(record.attempt); try authorize()
+                try authorize()
+                record.attempt.confirmation = try await client.prepareConfirmation(record.attempt)
+                try await save(record)
+                receipt = try await client.confirm(record.attempt); try authorize()
             }
         }
         record.state = receipt.state.rawValue; try await save(record)
@@ -130,6 +144,9 @@ final class CompanionEnrollmentModel {
                 peerSPKI: bundle.peerSPKI, peerDeviceID: bundle.peerDeviceID, compatibility: bundle.allowWindows10TLS12 ?? false)
             record.deviceID = deviceID; try await save(record)
             try authorize()
+            if let targetID = record.targetID, let targetBinding = record.targetBinding {
+                try await bindings.requireAssignment(targetID: targetID, targetBinding: targetBinding, deviceID: deviceID)
+            }
             // Windows may still be committing its bound receipt. A failed probe retains bound state.
             do {
                 _ = try await devices.mcpConnect(deviceID: deviceID, grantID: UUID(uuidString: bundle.grantID)!, authorize: authorize)
@@ -137,7 +154,7 @@ final class CompanionEnrollmentModel {
                 if let targetID = record.targetID, let targetBinding = record.targetBinding {
                     try await bindings.bind(targetID: targetID, targetBinding: targetBinding, deviceID: deviceID,
                         grantID: UUID(uuidString: bundle.grantID)!, fileGrantID: UUID(uuidString: bundle.fileGrantID),
-                        rdpGrantID: UUID(uuidString: bundle.rdpGrantID))
+                        rdpGrantID: UUID(uuidString: bundle.rdpGrantID), pairingID: UUID(uuidString: bundle.pairingID))
                 }
                 record.state = "complete"; try await save(record)
             } catch {

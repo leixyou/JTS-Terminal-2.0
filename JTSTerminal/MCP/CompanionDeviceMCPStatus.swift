@@ -18,24 +18,32 @@ extension CompanionDeviceMCPHandler {
                 "controllerSPKIBase64": snapshot.publicSPKI.base64EncodedString(), "enrollmentRequest": enrollment])
         }
         if request.action == "bind" || request.action == "enroll" {
-            let deviceID: UUID, grantID: UUID, fileGrantID: UUID?, rdpGrantID: UUID?
+            let deviceID: UUID, grantID: UUID, fileGrantID: UUID?, rdpGrantID: UUID?, pairingID: UUID?
             if request.action == "enroll" {
                 let bundle = try CompanionPublicEnrollment(request.arguments["enrollment"] as? [String: Any] ?? [:])
                 deviceID = try await devices.importPublicDevice(name: bundle.name, relayURL: bundle.relayURL,
                     peerSPKI: bundle.peerSPKI, peerDeviceID: bundle.peerDeviceID, compatibility: bundle.compatibility)
-                grantID = bundle.grantID; fileGrantID = bundle.fileGrantID; rdpGrantID = bundle.rdpGrantID
+                grantID = bundle.grantID; fileGrantID = bundle.fileGrantID; rdpGrantID = bundle.rdpGrantID; pairingID = bundle.pairingID
             } else {
                 deviceID = try CompanionDeviceMCPRequest.identifier("deviceId", request.arguments)
                 grantID = try CompanionDeviceMCPRequest.identifier("grantId", request.arguments)
                 fileGrantID = try optionalID("fileGrantId", request.arguments)
                 rdpGrantID = try optionalID("rdpGrantId", request.arguments)
+                pairingID = nil
             }
             try authorize()
+            do {
+                try await bindings.requireAssignment(targetID: request.targetID, targetBinding: targetBinding, deviceID: deviceID)
+            } catch CompanionTargetRouteError.deviceAssigned {
+                throw WindowsMCPToolError(code: .permissionDenied, message: "This Windows device belongs to another saved target. Use that target's own authorization.")
+            } catch CompanionTargetRouteError.targetAssigned {
+                throw WindowsMCPToolError(code: .permissionDenied, message: "This saved target is pinned to a different Windows identity.")
+            }
             _ = try await devices.mcpConnect(deviceID: deviceID, grantID: grantID, authorize: authorize)
             try authorize()
             // Never persist an unverified control grant or substitute it for either data lane.
             try await bindings.bind(targetID: request.targetID, targetBinding: targetBinding, deviceID: deviceID,
-                grantID: grantID, fileGrantID: fileGrantID, rdpGrantID: rdpGrantID)
+                grantID: grantID, fileGrantID: fileGrantID, rdpGrantID: rdpGrantID, pairingID: pairingID)
             try authorize()
         }
         let binding = try await bindings.binding(targetID: request.targetID, targetBinding: targetBinding)
@@ -86,7 +94,7 @@ nonisolated extension CompanionDeviceMCPRequest {
 nonisolated struct CompanionPublicEnrollment {
     let name, relayURL, peerDeviceID: String
     let peerSPKI: Data
-    let grantID: UUID
+    let pairingID, grantID: UUID
     let fileGrantID, rdpGrantID: UUID?
     let compatibility: Bool
     init(_ value: [String: Any]) throws {
@@ -104,9 +112,9 @@ nonisolated struct CompanionPublicEnrollment {
         grantID = try CompanionDeviceMCPRequest.identifier("grantID", value)
         fileGrantID = value["fileGrantID"] == nil ? nil : try CompanionDeviceMCPRequest.identifier("fileGrantID", value)
         rdpGrantID = value["rdpGrantID"] == nil ? nil : try CompanionDeviceMCPRequest.identifier("rdpGrantID", value)
-        let grants = [grantID, fileGrantID, rdpGrantID].compactMap { $0 }
-        guard Set(grants).count == grants.count else { throw CompanionDeviceMCPRequest.invalid("Control, file and RDP lane grants must be distinct.") }
-        _ = try CompanionDeviceMCPRequest.identifier("pairingID", value)
+        pairingID = try CompanionDeviceMCPRequest.identifier("pairingID", value)
+        let grants = [grantID, fileGrantID, rdpGrantID, pairingID].compactMap { $0 }
+        guard Set(grants).count == grants.count else { throw CompanionDeviceMCPRequest.invalid("Pairing, control, file and RDP identifiers must be distinct.") }
         compatibility = try CompanionDeviceMCPRequest.boolean("allowWindows10TLS12", value)
         if let state = value["installationState"] {
             guard state as? String == "installedAwaitingRelayAdmission" else {
