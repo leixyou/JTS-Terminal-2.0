@@ -109,7 +109,7 @@ struct CompanionDevicesView: View {
                         Text(t("Windows identity fingerprint", "Windows 身份指纹")).font(.headline)
                         CompanionPublicValue(value: device.peerDeviceID, copyLabel: t("Copy fingerprint", "复制指纹"))
                     }
-                    Text(device.allowWindows10TLS12 ? t("Explicit Windows 10 ESU TLS 1.2 compatibility", "已明确启用 Windows 10 ESU TLS 1.2 兼容") : "TLS 1.3")
+                    Text(device.allowWindows10TLS12 ? t("Explicit Windows 10 / Server 2019 TLS 1.2 compatibility", "已明确启用 Windows 10 / Server 2019 TLS 1.2 兼容") : "TLS 1.3")
                         .font(.caption).foregroundStyle(.secondary)
                     Text(t("Existing AI desktop control includes delegated pairing. Import the Windows installer’s public enrollment bundle through jts_device_status to verify its grant and bind the target without another approval. Relay HTTPS/WSS stays encrypted with server certificate validation skipped by default; inner TLS verifies the pinned peer.",
                            "已有的 AI 桌面控制授权包含配对委托。通过 jts_device_status 导入 Windows 安装器的公开配对包，即可校验授权并绑定目标，无需再次确认。中继 HTTPS/WSS 默认跳过证书校验但保持加密，内层 TLS 仍校验固定设备身份。"))

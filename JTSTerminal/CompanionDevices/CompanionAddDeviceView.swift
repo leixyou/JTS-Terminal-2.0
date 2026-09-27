@@ -49,7 +49,7 @@ struct CompanionAddDeviceView: View {
                     Text(t("Enter a canonical P-256 SPKI public key in Base64.", "请输入 Base64 编码的标准 P-256 SPKI 公钥。"))
                         .foregroundStyle(.red).font(.caption)
                 }
-                Toggle(t("Windows 10 ESU: explicitly allow TLS 1.2", "Windows 10 ESU：明确允许 TLS 1.2"), isOn: $compatibility)
+                Toggle(t("Windows 10 / Server 2019: explicitly allow TLS 1.2", "Windows 10 / Server 2019：明确允许 TLS 1.2"), isOn: $compatibility)
             }.formStyle(.grouped)
             Text(t("This saves the Windows public identity. Existing AI desktop control includes delegated pairing. Relay HTTPS/WSS stays encrypted and skips server certificate validation by default. End-to-end TLS still pins the Windows identity.",
                    "此处保存 Windows 公开身份。已有的 AI 桌面控制授权包含配对委托。中继 HTTPS/WSS 保持加密，默认不校验服务端证书；端到端 TLS 仍校验固定的 Windows 身份。"))

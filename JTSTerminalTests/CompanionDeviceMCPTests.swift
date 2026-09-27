@@ -46,6 +46,14 @@ struct CompanionDeviceMCPTests {
             "pairingID": UUID().uuidString, "grantID": UUID().uuidString,
             "fileGrantID": UUID().uuidString, "rdpGrantID": UUID().uuidString]
         #expect(try CompanionPublicEnrollment(bundle).peerSPKI == key)
+        #expect(try CompanionPublicEnrollment(bundle).compatibility == false)
+        bundle["allowWindows10TLS12"] = true
+        #expect(try CompanionPublicEnrollment(bundle).compatibility == true)
+        for invalid in [1, "true", NSNull()] as [Any] {
+            bundle["allowWindows10TLS12"] = invalid
+            #expect(throws: WindowsMCPToolError.self) { try CompanionPublicEnrollment(bundle) }
+        }
+        bundle.removeValue(forKey: "allowWindows10TLS12")
         bundle["installationState"] = "installedAwaitingRelayAdmission"
         #expect(try CompanionPublicEnrollment(bundle).peerSPKI == key)
         bundle["installationState"] = true
@@ -55,6 +63,36 @@ struct CompanionDeviceMCPTests {
         #expect(throws: WindowsMCPToolError.self) { try CompanionPublicEnrollment(bundle) }
         bundle.removeValue(forKey: "privateKey"); bundle["peerDeviceID"] = String(repeating: "0", count: 64)
         #expect(throws: WindowsMCPToolError.self) { try CompanionPublicEnrollment(bundle) }
+    }
+
+    @Test func identityRequestCarriesExplicitCompatibilityWithoutChangingExistingBindings() throws {
+        let key = P256.Signing.PrivateKey().publicKey.derRepresentation
+        let deviceID = try CompanionDeviceRegistry.peerDeviceID(forSPKI: key)
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        var values: [String: Any] = ["targetId": target, "action": "identity"]
+        for selection in [nil, false, true] as [Bool?] {
+            values["allowWindows10TLS12"] = selection
+            let request = try CompanionDeviceMCPRequest(tool: .status, arguments: values)
+            #expect(request.capabilities == [.desktopControl])
+            let bundle = try request.delegatedEnrollmentRequest(controllerDeviceID: deviceID, publicSPKI: key, now: now)
+            let bytes = try JSONSerialization.data(withJSONObject: bundle)
+            let wire = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+            #expect(wire["allowWindows10TLS12"] as? Bool == (selection == true ? true : nil))
+            #expect(wire["controllerDeviceID"] as? String == deviceID)
+            #expect(wire["controllerSPKIBase64"] as? String == key.base64EncodedString())
+            let grants = try ["pairingID", "grantID", "fileGrantID", "rdpGrantID"].map { try CompanionDeviceMCPRequest.identifier($0, wire) }
+            #expect(Set(grants).count == 4)
+            let expiry = try #require(ISO8601DateFormatter().date(from: wire["expiresAtUtc"] as? String ?? ""))
+            #expect(expiry.timeIntervalSince(now) == 1800)
+        }
+        for invalid in [1, "true", NSNull()] as [Any] {
+            values["allowWindows10TLS12"] = invalid
+            #expect(throws: WindowsMCPToolError.self) { try CompanionDeviceMCPRequest(tool: .status, arguments: values) }
+        }
+        for action in ["status", "connect", "disconnect", "bind", "unbind", "enroll"] {
+            values["action"] = action; values["allowWindows10TLS12"] = true
+            #expect(throws: WindowsMCPToolError.self) { try CompanionDeviceMCPRequest(tool: .status, arguments: values) }
+        }
     }
 
     @Test func atomicWriteCommitsOnlyAfterEveryChunkAndVerifiesPublishedHash() async throws {

@@ -9,13 +9,8 @@ extension CompanionDeviceMCPHandler {
         try authorize()
         if request.action == "identity" {
             guard let snapshot else { throw CompanionDeviceError.notInitialized }
-            let formatter = ISO8601DateFormatter(), now = Date()
-            let enrollment: [String: Any] = ["version": 1, "authorizationSource": "ownerDelegated",
-                "authorizationReference": "device-ai-control-enabled", "controllerDeviceID": snapshot.deviceID,
-                "controllerSPKIBase64": snapshot.publicSPKI.base64EncodedString(),
-                "pairingID": UUID().uuidString.lowercased(), "grantID": UUID().uuidString.lowercased(),
-                "fileGrantID": UUID().uuidString.lowercased(), "rdpGrantID": UUID().uuidString.lowercased(),
-                "issuedAtUtc": formatter.string(from: now), "expiresAtUtc": formatter.string(from: now.addingTimeInterval(1800))]
+            let enrollment = try request.delegatedEnrollmentRequest(controllerDeviceID: snapshot.deviceID,
+                publicSPKI: snapshot.publicSPKI)
             return envelope(request, extra: ["state": "identityReady", "controllerDeviceID": snapshot.deviceID,
                 "controllerSPKIBase64": snapshot.publicSPKI.base64EncodedString(), "enrollmentRequest": enrollment])
         }
@@ -65,6 +60,23 @@ extension CompanionDeviceMCPHandler {
     }
     private func optionalID(_ key: String, _ values: [String: Any]) throws -> UUID? {
         values[key] == nil ? nil : try CompanionDeviceMCPRequest.identifier(key, values)
+    }
+}
+
+nonisolated extension CompanionDeviceMCPRequest {
+    func delegatedEnrollmentRequest(controllerDeviceID: String, publicSPKI: Data, now: Date = Date()) throws -> [String: Any] {
+        guard tool == .status, action == "identity" else { throw Self.invalid("An identity request is required.") }
+        let formatter = ISO8601DateFormatter()
+        var enrollment: [String: Any] = ["version": 1, "authorizationSource": "ownerDelegated",
+            "authorizationReference": "device-ai-control-enabled", "controllerDeviceID": controllerDeviceID,
+            "controllerSPKIBase64": publicSPKI.base64EncodedString(),
+            "pairingID": UUID().uuidString.lowercased(), "grantID": UUID().uuidString.lowercased(),
+            "fileGrantID": UUID().uuidString.lowercased(), "rdpGrantID": UUID().uuidString.lowercased(),
+            "issuedAtUtc": formatter.string(from: now), "expiresAtUtc": formatter.string(from: now.addingTimeInterval(1800))]
+        // Keep the original TLS 1.3 request compatible with older installers. Compatibility
+        // is explicit and becomes part of the public request covered by its pinned SHA-256.
+        if try Self.boolean("allowWindows10TLS12", arguments) { enrollment["allowWindows10TLS12"] = true }
+        return enrollment
     }
 }
 

@@ -44,6 +44,13 @@ remain enforced. Do not use an unsigned build as evidence that signed IPC works.
 
 ## Windows and relay operation
 
+For a Windows 10 or Windows Server 2019 relay target, create its public enrollment
+request with `jts_device_status action=identity` and `allowWindows10TLS12=true`.
+The explicit setting is covered by the request checksum and retained when
+importing the Windows enrollment. Omitting it keeps TLS 1.3; there is no automatic
+fallback after a handshake failure. The matching Windows installer must support
+this request field.
+
 Companion commands, structured UI actions and files use direct protocols and
 return structured results. Normal operations do not emulate keyboard input to
 execute commands. Enabling AI desktop control for a device also delegates its
