@@ -2129,10 +2129,23 @@ final class RDPDesktopRuntimeStore: ObservableObject, DesktopProvider {
         )
     }
 
+    func performObservedSemanticAction(
+        sessionID: UUID,
+        request: DesktopActionRequest,
+        observationID: UUID,
+        operationToken: RDPAuthorizedOperationToken
+    ) async throws -> RDPDesktopSessionState {
+        try await performDesktopAction(
+            sessionID: sessionID, request: request, isManualInput: false,
+            observedUIAContext: (observationID, operationToken)
+        )
+    }
+
     private func performDesktopAction(
         sessionID: UUID,
         request: DesktopActionRequest,
-        isManualInput: Bool
+        isManualInput: Bool,
+        observedUIAContext: (id: UUID, token: RDPAuthorizedOperationToken)? = nil
     ) async throws -> RDPDesktopSessionState {
         guard let active = desktopsBySessionID[sessionID] else {
             throw WindowsMCPToolError(code: .targetNotFound, message: "The RDP desktop session is not open.")
@@ -2165,6 +2178,14 @@ final class RDPDesktopRuntimeStore: ObservableObject, DesktopProvider {
         guard let frame = active.latestFrame else {
             throw WindowsMCPToolError(code: .stateConflict, message: "Observe the current desktop frame before acting.")
         }
+        if let context = observedUIAContext {
+            try requireAuthorizedOperation(context.token)
+            guard context.token.targetID == active.target.targetID,
+                  context.token.showsControlActivity else {
+                throw WindowsMCPToolError(code: .permissionDenied,
+                    message: "The UI Automation action requires control authority for this desktop.")
+            }
+        }
         let resolvedRequest: DesktopActionRequest
         do {
             if isManualInput {
@@ -2176,6 +2197,12 @@ final class RDPDesktopRuntimeStore: ObservableObject, DesktopProvider {
                     observedFrame: observedFrame,
                     latestFrame: frame.metadata
                 )
+            } else if let context = observedUIAContext {
+                // Observation validation and frame selection run together on
+                // MainActor, before any suspension or remote mutation.
+                resolvedRequest = try uiaObservations.rebindSemanticAction(
+                    request, observationID: context.id, token: context.token,
+                    sessionID: sessionID, latestFrame: frame.metadata)
             } else {
                 resolvedRequest = request
             }

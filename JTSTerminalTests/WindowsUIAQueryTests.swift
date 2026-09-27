@@ -183,6 +183,117 @@ struct WindowsUIAQueryTests {
         }
     }
 
+    @Test func observedSemanticActionsToleratePaintsWithoutChangingSelectorOrRawValidation() throws {
+        var ledger = RDPUIAObservationLedger()
+        let session = UUID()
+        let token = RDPAuthorizedOperationToken(operationID: UUID(), targetID: UUID(), targetBinding: "binding",
+            clientID: "codex", generation: 4, connectionGeneration: 8, showsControlActivity: true,
+            showsViewingActivity: false, survivesConnectionTransition: false)
+        let observation = ledger.record(token: token, sessionID: session, now: 100)
+        let frame = DesktopFrameMetadata(sessionID: session, stateRevision: 236,
+            pixelWidth: 1_920, pixelHeight: 1_080)
+        let selector = #"{"processId":42,"automationId":"editor"}"#
+        for action: DesktopActionKind in [.semanticInvoke, .semanticSetValue, .semanticSelect, .wait] {
+            let request = DesktopActionRequest(action: action, expectedStateRevision: 232,
+                selector: selector, text: action == .semanticSetValue ? "value" : nil)
+            #expect(throws: DesktopActionValidationError.staleState(expected: 232, current: 236)) {
+                try request.validate(against: frame)
+            }
+            let rebound = try ledger.rebindSemanticAction(request, observationID: observation,
+                token: token, sessionID: session, latestFrame: frame, now: 101)
+            try rebound.validate(against: frame)
+            #expect(rebound.expectedStateRevision == 236)
+            #expect(rebound.selector == selector)
+            #expect(rebound.text == request.text)
+        }
+        for action: DesktopActionKind in [.click, .typeText, .keyChord] {
+            let request = DesktopActionRequest(action: action, expectedStateRevision: 232,
+                expectedFrameID: frame.frameID, point: DesktopPoint(x: 1, y: 1))
+            #expect(throws: WindowsMCPToolError.self) {
+                try ledger.rebindSemanticAction(request, observationID: observation,
+                    token: token, sessionID: session, latestFrame: frame, now: 101)
+            }
+            #expect(throws: DesktopActionValidationError.staleState(expected: 232, current: 236)) {
+                try request.validate(against: frame)
+            }
+        }
+    }
+
+    @Test func observedSemanticRebindingRejectsExpiredOrChangedContext() throws {
+        var ledger = RDPUIAObservationLedger()
+        let session = UUID()
+        let token = RDPAuthorizedOperationToken(operationID: UUID(), targetID: UUID(), targetBinding: "binding",
+            clientID: "codex", generation: 4, connectionGeneration: 8, showsControlActivity: true,
+            showsViewingActivity: false, survivesConnectionTransition: false)
+        let observation = ledger.record(token: token, sessionID: session, now: 100)
+        let frame = DesktopFrameMetadata(sessionID: session, stateRevision: 236,
+            pixelWidth: 1_920, pixelHeight: 1_080)
+        let request = DesktopActionRequest(action: .semanticSetValue, expectedStateRevision: 232,
+            selector: #"{"processId":42,"automationId":"editor"}"#, text: "value")
+        var otherClient = token; otherClient.clientID = "other"
+        var takeover = token; takeover.generation += 1
+        var reconnect = token; reconnect.connectionGeneration += 1
+        var changedTarget = token; changedTarget.targetBinding = "other-binding"
+        for changed in [otherClient, takeover, reconnect, changedTarget] {
+            #expect(throws: WindowsMCPToolError.self) {
+                try ledger.rebindSemanticAction(request, observationID: observation,
+                    token: changed, sessionID: session, latestFrame: frame, now: 101)
+            }
+        }
+        for (id, requestedSession, now) in [(UUID(), session, 101.0),
+                                           (observation, UUID(), 101.0),
+                                           (observation, session, 160.0)] {
+            #expect(throws: WindowsMCPToolError.self) {
+                try ledger.rebindSemanticAction(request, observationID: id,
+                    token: token, sessionID: requestedSession, latestFrame: frame, now: now)
+            }
+        }
+        var otherFrame = frame; otherFrame.sessionID = UUID()
+        #expect(throws: WindowsMCPToolError.self) {
+            try ledger.rebindSemanticAction(request, observationID: observation,
+                token: token, sessionID: session, latestFrame: otherFrame, now: 101)
+        }
+    }
+
+    @Test func runtimeSemanticRebindingStillRequiresCurrentAuthorityAndCompanion() async throws {
+        let runtime = RDPDesktopRuntimeStore(openOperationExecutorForTesting: { _, _, _ in
+            throw WindowsMCPToolError(code: .runtimeFailure, message: "No connection expected.")
+        })
+        defer { runtime.stopAllImmediately() }
+        let target = RemoteSession(name: "Windows", host: "uia.test", username: "operator", connectionType: .rdp)
+        var profile = target.rdpProfile; profile.clipboardEnabled = false
+        try target.setRDPProfile(profile)
+        let session = runtime.installActiveDesktopForTesting(target: target)
+        let observedFrame = try #require(runtime.installDesktopFrameForTesting(sessionID: session, runtimeStateRevision: 232))
+        let token = try runtime.beginAuthorizedOperation(targetID: target.targetID,
+            targetBinding: target.mcpGrantTargetBinding, clientID: "codex", displayIdentity: "codex",
+            capabilities: [.desktopControl])
+        let observation = runtime.uiaObservations.record(token: token, sessionID: session)
+        _ = try #require(runtime.installDesktopFrameForTesting(sessionID: session, runtimeStateRevision: 236))
+        let request = DesktopActionRequest(action: .semanticSetValue,
+            expectedStateRevision: observedFrame.stateRevision,
+            selector: #"{"processId":42,"automationId":"editor"}"#, text: "value")
+        do {
+            _ = try await runtime.performDesktopAction(sessionID: session, request: request)
+            Issue.record("An unobserved stale semantic action must remain rejected.")
+        } catch let error as WindowsMCPToolError { #expect(error.code == .stateConflict) }
+        do {
+            _ = try await runtime.performObservedSemanticAction(sessionID: session, request: request,
+                observationID: observation, operationToken: token)
+            Issue.record("The fixture has no paired Companion and must not execute remotely.")
+        } catch let error as WindowsMCPToolError {
+            // Reaching the real dispatch gate proves frame repaints did not
+            // reject a valid semantic context or bypass Companion authority.
+            #expect(error.code == .companionRequired)
+        }
+        runtime.revokeAuthorizedOperations(targetID: target.targetID)
+        do {
+            _ = try await runtime.performObservedSemanticAction(sessionID: session, request: request,
+                observationID: observation, operationToken: token)
+            Issue.record("A retained UIA observation cannot restore revoked control authority.")
+        } catch let error as WindowsMCPToolError { #expect(error.code == .permissionDenied) }
+    }
+
     @Test func companionChannelTransitionInvalidatesObservationWithoutClosingRDP() throws {
         let runtime = RDPDesktopRuntimeStore(openOperationExecutorForTesting: { _, _, _ in
             throw WindowsMCPToolError(code: .runtimeFailure, message: "No connection expected.")

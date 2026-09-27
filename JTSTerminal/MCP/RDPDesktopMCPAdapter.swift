@@ -626,10 +626,14 @@ extension RDPDesktopRuntimeStore {
             let activeSessionID = try requestedSessionID(arguments, target: target)
             let request = try WindowsMCPDesktopActionRequestParser.parse(arguments)
             try requireAuthorizedOperation(operationToken)
+            let state: RDPDesktopSessionState
             if let raw = arguments["expectedUiaObservationId"] as? String, let id = UUID(uuidString: raw) {
-                try uiaObservations.validate(id, token: operationToken, sessionID: activeSessionID)
+                state = try await performObservedSemanticAction(
+                    sessionID: activeSessionID, request: request,
+                    observationID: id, operationToken: operationToken)
+            } else {
+                state = try await performDesktopAction(sessionID: activeSessionID, request: request)
             }
-            let state = try await performDesktopAction(sessionID: activeSessionID, request: request)
             try requireAuthorizedOperation(operationToken)
             return response(state: state, extra: ["ok": true, "accepted": true])
 

@@ -110,6 +110,31 @@ nonisolated struct RDPUIAObservationLedger {
         }
     }
 
+    /// UIA resolves the unique selector again at execution. A valid observation
+    /// binds that operation to its caller and desktop lifecycle while ordinary
+    /// framebuffer paints (for example a blinking caret) may continue.
+    func rebindSemanticAction(
+        _ request: DesktopActionRequest,
+        observationID: UUID,
+        token: RDPAuthorizedOperationToken,
+        sessionID: UUID,
+        latestFrame: DesktopFrameMetadata,
+        now: TimeInterval = ProcessInfo.processInfo.systemUptime
+    ) throws -> DesktopActionRequest {
+        guard request.action.requiresSelector else {
+            throw WindowsMCPToolError(code: .invalidArgument,
+                message: "A UI Automation observation is valid only for semantic actions.")
+        }
+        try validate(observationID, token: token, sessionID: sessionID, now: now)
+        guard latestFrame.sessionID == sessionID else {
+            throw WindowsMCPToolError(code: .stateConflict,
+                message: "The UI Automation observation belongs to a different desktop session.")
+        }
+        var rebound = request
+        rebound.expectedStateRevision = latestFrame.stateRevision
+        return rebound
+    }
+
     mutating func removeAll() { entries.removeAll() }
 
     mutating func remove(targetID: UUID) {

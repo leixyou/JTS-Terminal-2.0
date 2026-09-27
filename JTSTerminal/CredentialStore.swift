@@ -616,6 +616,7 @@ nonisolated enum CredentialStoreError: LocalizedError, Equatable {
 }
 
 nonisolated private final class SQLiteCredentialDatabase {
+    private static let lockWaitMilliseconds: Int32 = 5_000
     private let handle: OpaquePointer?
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -631,6 +632,11 @@ nonisolated private final class SQLiteCredentialDatabase {
         }
 
         self.handle = database
+        // FULLMUTEX protects this connection, not the independent connections
+        // used by RDP, Companion persistence, and other vault instances.
+        guard sqlite3_busy_timeout(database, Self.lockWaitMilliseconds) == SQLITE_OK else {
+            throw CredentialStoreError.database("Unable to configure the credential database lock wait.")
+        }
         try executeSchema()
     }
 
@@ -733,34 +739,141 @@ nonisolated private final class SQLiteCredentialDatabase {
     }
 
     private func executeSchema() throws {
-        try execute("PRAGMA journal_mode=WAL;")
+        try configureJournalMode()
         try execute("PRAGMA synchronous=FULL;")
         try execute("PRAGMA fullfsync=ON;")
         try execute("PRAGMA foreign_keys=ON;")
-        try execute("""
-        CREATE TABLE IF NOT EXISTS credentials (
-            account TEXT PRIMARY KEY NOT NULL,
-            wrapped_key BLOB NOT NULL,
-            nonce BLOB NOT NULL,
-            ciphertext BLOB NOT NULL,
-            tag BLOB NOT NULL,
-            algorithm TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-        """)
-        try execute("""
-        CREATE TABLE IF NOT EXISTS metadata (
-            key TEXT PRIMARY KEY NOT NULL,
-            value TEXT NOT NULL
-        );
-        """)
-        try execute("""
-        INSERT INTO metadata (key, value)
-        VALUES ('schema_version', '1')
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value;
-        """)
+        // Opening an initialized vault for a read must not acquire a writer
+        // lock by updating an unchanged schema-version row.
+        if try schemaIsInitialized() { return }
+        try withWriteTransaction {
+            // Another process may have initialized the empty database while
+            // this connection waited for the writer lock.
+            if try schemaIsInitialized() { return }
+            try execute("""
+            CREATE TABLE credentials (
+                account TEXT PRIMARY KEY NOT NULL,
+                wrapped_key BLOB NOT NULL,
+                nonce BLOB NOT NULL,
+                ciphertext BLOB NOT NULL,
+                tag BLOB NOT NULL,
+                algorithm TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE metadata (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+            );
+            INSERT INTO metadata (key, value) VALUES ('schema_version', '1');
+            """)
+            guard try schemaIsInitialized() else {
+                throw CredentialStoreError.database("Credential database initialization did not complete.")
+            }
+        }
     }
+
+    private func configureJournalMode() throws {
+        // Changing a fresh rollback-journal database to WAL can require a lock
+        // upgrade for which SQLite skips its busy handler. Finalize each probe
+        // before retrying so competing initializers can finish that transition.
+        let deadline = ProcessInfo.processInfo.systemUptime + Double(Self.lockWaitMilliseconds) / 1_000
+        defer { sqlite3_busy_timeout(handle, Self.lockWaitMilliseconds) }
+        var failure = "Credential database journal initialization remained busy."
+        while true {
+            let remaining = Int32(max(0, (deadline - ProcessInfo.processInfo.systemUptime) * 1_000))
+            guard remaining > 0 else { throw CredentialStoreError.database(failure) }
+            sqlite3_busy_timeout(handle, remaining)
+            var result = journalModeResult("PRAGMA journal_mode;")
+            if result.code == SQLITE_ROW, result.mode == "wal" { return }
+            if result.code == SQLITE_ROW {
+                let transitionWait = Int32(max(0, (deadline - ProcessInfo.processInfo.systemUptime) * 1_000))
+                guard transitionWait > 0 else { throw CredentialStoreError.database(failure) }
+                sqlite3_busy_timeout(handle, transitionWait)
+                result = journalModeResult("PRAGMA journal_mode=WAL;")
+            }
+            if result.code == SQLITE_ROW, result.mode == "wal" { return }
+            failure = result.code == SQLITE_ROW
+                ? "Credential database could not enable WAL journaling." : result.message
+            let primaryCode = result.code & 0xff
+            guard primaryCode == SQLITE_BUSY || primaryCode == SQLITE_LOCKED else {
+                throw CredentialStoreError.database(failure)
+            }
+            guard ProcessInfo.processInfo.systemUptime < deadline else {
+                throw CredentialStoreError.database(failure)
+            }
+            sqlite3_sleep(10)
+        }
+    }
+
+    private func journalModeResult(_ sql: String) -> (code: Int32, mode: String?, message: String) {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        let prepared = sqlite3_prepare_v2(handle, sql, -1, &statement, nil)
+        guard prepared == SQLITE_OK else { return (prepared, nil, lastErrorMessage) }
+        let result = sqlite3_step(statement)
+        return (result, result == SQLITE_ROW ? stringColumn(0, in: statement) : nil, lastErrorMessage)
+    }
+
+    /// Only an empty database may be initialized. Partial or unsupported schema
+    /// is never repaired by overwriting its version or recreating missing tables.
+    private func schemaIsInitialized() throws -> Bool {
+        let objects = try prepare("SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%';")
+        var names = Set<String>()
+        var hasObjects = false
+        do {
+            defer { sqlite3_finalize(objects) }
+            var result = sqlite3_step(objects)
+            while result == SQLITE_ROW {
+                hasObjects = true
+                let name = stringColumn(0, in: objects)
+                if name == "credentials" || name == "metadata" {
+                    guard stringColumn(1, in: objects) == "table" else { throw invalidSchema }
+                    names.insert(name)
+                }
+                result = sqlite3_step(objects)
+            }
+            guard result == SQLITE_DONE else { throw CredentialStoreError.database(lastErrorMessage) }
+        }
+        if !hasObjects { return false }
+        guard names == ["credentials", "metadata"] else { throw invalidSchema }
+        try validateColumns("credentials", expected: [
+            ("account", "TEXT", 1), ("wrapped_key", "BLOB", 0), ("nonce", "BLOB", 0),
+            ("ciphertext", "BLOB", 0), ("tag", "BLOB", 0), ("algorithm", "TEXT", 0),
+            ("created_at", "TEXT", 0), ("updated_at", "TEXT", 0),
+        ])
+        try validateColumns("metadata", expected: [("key", "TEXT", 1), ("value", "TEXT", 0)])
+        let version = try prepare("SELECT value FROM metadata WHERE key = 'schema_version';")
+        defer { sqlite3_finalize(version) }
+        let result = sqlite3_step(version)
+        guard result == SQLITE_ROW else {
+            if result == SQLITE_DONE { throw invalidSchema }
+            throw CredentialStoreError.database(lastErrorMessage)
+        }
+        guard stringColumn(0, in: version) == "1", sqlite3_step(version) == SQLITE_DONE else { throw invalidSchema }
+        return true
+    }
+
+    private func validateColumns(_ table: String, expected: [(String, String, Int32)]) throws {
+        // table is one of the two fixed internal names above, never caller input.
+        let statement = try prepare("PRAGMA table_info(\(table));")
+        defer { sqlite3_finalize(statement) }
+        var index = 0
+        var result = sqlite3_step(statement)
+        while result == SQLITE_ROW {
+            guard index < expected.count,
+                  stringColumn(1, in: statement) == expected[index].0,
+                  stringColumn(2, in: statement).uppercased() == expected[index].1,
+                  sqlite3_column_int(statement, 3) == 1,
+                  sqlite3_column_int(statement, 5) == expected[index].2 else { throw invalidSchema }
+            index += 1
+            result = sqlite3_step(statement)
+        }
+        guard result == SQLITE_DONE else { throw CredentialStoreError.database(lastErrorMessage) }
+        guard index == expected.count else { throw invalidSchema }
+    }
+
+    private var invalidSchema: CredentialStoreError { .database("Credential database schema is incomplete or unsupported.") }
 
     private func execute(_ sql: String) throws {
         var errorMessage: UnsafeMutablePointer<CChar>?

@@ -1180,7 +1180,7 @@ enum WindowsMCPToolRegistry {
                         maximumLength: 256
                     ),
                     "expectedFrameId": stringSchema("Required frame UUID for coordinate actions."),
-                    "expectedUiaObservationId": stringSchema("UIA observation UUID for semantic actions, valid for 60 seconds in the same caller/session/control generation."),
+                    "expectedUiaObservationId": stringSchema("UIA observation UUID for semantic actions, valid for 60 seconds in the same caller/session/control generation. A valid observation tolerates framebuffer repaints; the current unique selector and mutation permission are still checked. Without it, expectedStateRevision must match the current frame."),
                     "selector": stringSchema("JSON UI Automation selector. Mutations require positive processId plus automationId or name; wait may use a broader selector."),
                     "x": integerSchema("Raw remote framebuffer x coordinate."),
                     "y": integerSchema("Raw remote framebuffer y coordinate."),

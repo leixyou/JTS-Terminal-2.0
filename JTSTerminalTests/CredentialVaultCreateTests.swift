@@ -27,22 +27,156 @@ struct CredentialVaultCreateTests {
         let fixture = CredentialVaultWriteFixture()
         defer { fixture.cleanup() }
         #expect(try fixture.vault.read(account: "identity") == nil)
-        let winners = await withTaskGroup(of: String?.self, returning: [String].self) { group in
+        let winners = try await withThrowingTaskGroup(of: String?.self, returning: [String].self) { group in
             for index in 0..<4 {
                 group.addTask {
                     let candidate = "candidate-\(index)"
                     do {
                         try fixture.reopened().create(secret: candidate, account: "identity")
                         return candidate
-                    } catch { return nil }
+                    } catch CredentialStoreError.accountAlreadyExists { return nil }
                 }
             }
             var values: [String] = []
-            for await value in group { if let value { values.append(value) } }
+            for try await value in group { if let value { values.append(value) } }
             return values
         }
         #expect(winners.count == 1)
         #expect(try fixture.reopened().read(account: "identity") == winners.first)
+    }
+
+    @Test("An initialized vault can be read while another SQLite connection holds the writer lock")
+    func readDoesNotRequireWriterLock() throws {
+        let fixture = CredentialVaultWriteFixture()
+        defer { fixture.cleanup() }
+        #expect(try fixture.vault.read(account: "missing") == nil)
+        try fixture.withWriterTransaction {
+            // The first connection keeps BEGIN IMMEDIATE open for the entire
+            // read. A busy timeout alone cannot make this operation succeed.
+            let value = try fixture.reopened().read(account: "missing")
+            #expect(value == nil)
+        }
+        #expect(try fixture.masterKey() == nil)
+    }
+
+    @Test("Independent first reads initialize an empty vault atomically")
+    func concurrentFirstReadsInitializeOnce() async throws {
+        let fixture = CredentialVaultWriteFixture()
+        defer { fixture.cleanup() }
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<4 {
+                group.addTask {
+                    let value = try fixture.reopened().read(account: "missing")
+                    #expect(value == nil)
+                }
+            }
+            try await group.waitForAll()
+        }
+        #expect(try fixture.scalar("SELECT value FROM metadata WHERE key = 'schema_version';") == "1")
+        #expect(try fixture.masterKey() == nil)
+    }
+
+    @Test("First read waits for a competing writer before converting an empty database to WAL")
+    func firstReadWaitsForJournalConversion() async throws {
+        let fixture = CredentialVaultWriteFixture()
+        defer { fixture.cleanup() }
+        try FileManager.default.createDirectory(at: fixture.directory, withIntermediateDirectories: true)
+        try Data().write(to: fixture.databaseURL)
+        let started = DispatchSemaphore(value: 0)
+        let completed = DispatchSemaphore(value: 0)
+        let reader = try fixture.withWriterTransaction {
+            let task = Task.detached {
+                started.signal()
+                defer { completed.signal() }
+                return try fixture.reopened().read(account: "missing")
+            }
+            #expect(started.wait(timeout: .now() + 5) == .success)
+            #expect(completed.wait(timeout: .now() + .milliseconds(250)) == .timedOut)
+            return task
+        }
+        let value = try await reader.value
+        #expect(value == nil)
+        #expect(try fixture.scalar("PRAGMA journal_mode;") == "wal")
+        #expect(try fixture.scalar("SELECT value FROM metadata WHERE key = 'schema_version';") == "1")
+        #expect(try fixture.masterKey() == nil)
+    }
+
+    @Test("A writer waits for a short transaction on another SQLite connection")
+    func writerWaitsForContendedTransaction() async throws {
+        let fixture = CredentialVaultWriteFixture()
+        defer { fixture.cleanup() }
+        try fixture.vault.create(secret: "initial", account: "registry")
+        let started = DispatchSemaphore(value: 0)
+        let completed = DispatchSemaphore(value: 0)
+        let writer = try fixture.withWriterTransaction {
+            let task = Task.detached {
+                started.signal()
+                defer { completed.signal() }
+                try fixture.reopened().replace(secret: "committed", account: "registry", expectedSecret: "initial")
+            }
+            #expect(started.wait(timeout: .now() + 5) == .success)
+            // Hold a real independent SQLite writer while the vault attempts
+            // its CAS. An immediate SQLITE_BUSY is a failure, not a CAS loser.
+            #expect(completed.wait(timeout: .now() + .milliseconds(250)) == .timedOut)
+            return task
+        }
+        try await writer.value
+        #expect(try fixture.reopened().read(account: "registry") == "committed")
+    }
+
+    @Test("Concurrent CAS writers have one winner and only stale-value losers")
+    func concurrentReplaceHasOneWinner() async throws {
+        let fixture = CredentialVaultWriteFixture()
+        defer { fixture.cleanup() }
+        try fixture.vault.create(secret: "initial", account: "registry")
+        let winners = try await withThrowingTaskGroup(of: String?.self, returning: [String].self) { group in
+            for index in 0..<4 {
+                group.addTask {
+                    let candidate = "candidate-\(index)"
+                    do {
+                        try fixture.reopened().replace(secret: candidate, account: "registry", expectedSecret: "initial")
+                        return candidate
+                    } catch CredentialStoreError.recordChanged { return nil }
+                }
+            }
+            var values: [String] = []
+            for try await value in group { if let value { values.append(value) } }
+            return values
+        }
+        #expect(winners.count == 1)
+        #expect(try fixture.reopened().read(account: "registry") == winners.first)
+    }
+
+    @Test("Missing or unsupported schema versions fail closed without repair", arguments: [
+        "UPDATE metadata SET value = '2' WHERE key = 'schema_version';",
+        "DELETE FROM metadata WHERE key = 'schema_version';",
+    ])
+    func invalidSchemaVersionIsNotOverwritten(_ mutation: String) throws {
+        let fixture = CredentialVaultWriteFixture()
+        defer { fixture.cleanup() }
+        _ = try fixture.vault.read(account: "missing")
+        try fixture.sql(mutation)
+        let before = try fixture.scalar("SELECT value FROM metadata WHERE key = 'schema_version';")
+        #expect(throws: CredentialStoreError.self) { try fixture.reopened().read(account: "missing") }
+        #expect(try fixture.scalar("SELECT value FROM metadata WHERE key = 'schema_version';") == before)
+        #expect(try fixture.masterKey() == nil)
+    }
+
+    @Test("Partial or incompatible schemas fail closed without creating replacement tables", arguments: [
+        "DROP TABLE metadata;",
+        "ALTER TABLE credentials RENAME COLUMN tag TO invalid_tag;",
+        "DROP TABLE credentials; CREATE VIEW credentials AS SELECT key AS account FROM metadata;",
+    ])
+    func invalidSchemaIsNotRepaired(_ mutation: String) throws {
+        let fixture = CredentialVaultWriteFixture()
+        defer { fixture.cleanup() }
+        _ = try fixture.vault.read(account: "missing")
+        try fixture.sql(mutation)
+        let schemaQuery = "SELECT group_concat(sql, char(10)) FROM (SELECT sql FROM sqlite_master ORDER BY name);"
+        let before = try fixture.scalar(schemaQuery)
+        #expect(throws: CredentialStoreError.self) { try fixture.reopened().read(account: "missing") }
+        #expect(try fixture.scalar(schemaQuery) == before)
+        #expect(try fixture.masterKey() == nil)
     }
 
     @Test("Missing durable master blocks create, save and CAS despite a cached key")
@@ -239,15 +373,48 @@ nonisolated private final class CredentialVaultWriteFixture: @unchecked Sendable
     }
 
     func sql(_ statement: String) throws {
+        try withDatabase { database in
+            guard sqlite3_exec(database, statement, nil, nil, nil) == SQLITE_OK else {
+                throw CredentialStoreError.database("Disposable test database operation failed.")
+            }
+        }
+    }
+
+    func scalar(_ sql: String) throws -> String? {
+        try withDatabase { database in
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+                throw CredentialStoreError.database("Disposable test query could not be prepared.")
+            }
+            defer { sqlite3_finalize(statement) }
+            let result = sqlite3_step(statement)
+            if result == SQLITE_DONE { return nil }
+            guard result == SQLITE_ROW else {
+                throw CredentialStoreError.database("Disposable test query failed.")
+            }
+            return sqlite3_column_text(statement, 0).map { String(cString: $0) }
+        }
+    }
+
+    func withWriterTransaction<T>(_ operation: () throws -> T) throws -> T {
+        try withDatabase { database in
+            guard sqlite3_exec(database, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
+                throw CredentialStoreError.database("Disposable test writer could not acquire its lock.")
+            }
+            defer { sqlite3_exec(database, "ROLLBACK;", nil, nil, nil) }
+            return try operation()
+        }
+    }
+
+    private func withDatabase<T>(_ operation: (OpaquePointer) throws -> T) throws -> T {
         var database: OpaquePointer?
-        guard sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
+        guard sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK,
+              let database else {
             if let database { sqlite3_close(database) }
             throw CredentialStoreError.database("Disposable test database could not be opened.")
         }
         defer { sqlite3_close(database) }
-        guard sqlite3_exec(database, statement, nil, nil, nil) == SQLITE_OK else {
-            throw CredentialStoreError.database("Disposable test database operation failed.")
-        }
+        return try operation(database)
     }
 
     func cleanup() {
