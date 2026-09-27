@@ -7,6 +7,7 @@ struct CompanionDevicesView: View {
     @State var model: CompanionDevicesModel = .shared
     @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.defaultLanguage.rawValue
     @State private var adding = false
+    @State private var enrolling = false
     @State private var initializing = false
     @State private var revoking = false
     @State private var grantID = ""
@@ -22,7 +23,9 @@ struct CompanionDevicesView: View {
                 if model.busy { ProgressView().controlSize(.small).accessibilityLabel(t("Working", "处理中")) }
                 Button(t("Reload", "重新读取"), systemImage: "arrow.clockwise") { Task { await model.refresh() } }
                     .disabled(model.busy)
-                Button(t("Add device…", "添加设备…"), systemImage: "plus") { adding = true }
+                Button(t("Access code…", "接入码…"), systemImage: "link") { enrolling = true }
+                    .disabled(model.busy).accessibilityIdentifier("companion-access-code")
+                Button(t("Import device…", "导入设备…"), systemImage: "plus") { adding = true }
                     .disabled(!model.loaded || model.snapshot == nil || model.busy)
                     .accessibilityIdentifier("companion-add-device")
             }.padding()
@@ -63,6 +66,7 @@ struct CompanionDevicesView: View {
         .task { await model.refresh() }
         .onChange(of: model.selectedID) { _, _ in grantID = "" }
         .sheet(isPresented: $adding) { CompanionAddDeviceView(model: model, language: language) }
+        .sheet(isPresented: $enrolling) { CompanionEnrollmentView(language: language) }
         .alert(t("Create a new local identity?", "创建新的本机身份？"), isPresented: $initializing) {
             Button(t("Cancel", "取消"), role: .cancel) {}
             Button(t("Create identity", "创建身份")) { Task { await model.initialize() } }

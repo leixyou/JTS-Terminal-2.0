@@ -98,7 +98,7 @@ struct OrderedPTYEventBuffer {
     }
 }
 
-/// A focused local PTY runner used with SwiftTerm's public PTY helper.
+/// A focused local PTY runner with explicit descriptor inheritance.
 ///
 /// SwiftTerm 1.13 can notify `processTerminated` before output already accepted
 /// by its read queue reaches the delegate. This runner retains the same forkpty
@@ -167,24 +167,21 @@ final class OrderedPTYProcess {
         args: [String],
         environment: [String],
         currentDirectory: String? = nil,
+        preservingDescriptor: Int32? = nil,
         configureBeforeIO: (_ masterFileDescriptor: Int32, _ childPID: pid_t) throws -> Void
     ) throws {
         guard !running else {
             throw OrderedPTYProcessError.alreadyRunning
         }
         var size = delegate?.getWindowSize() ?? winsize()
-        var processArguments = args
-        processArguments.insert(executable, at: 0)
-
-        guard let launch = PseudoTerminalHelpers.fork(
-            andExec: executable,
-            args: processArguments,
-            env: environment,
+        let launch = try PTYProcessLauncher.launch(
+            executable: executable,
+            arguments: args,
+            environment: environment,
             currentDirectory: currentDirectory,
-            desiredWindowSize: &size
-        ) else {
-            throw OrderedPTYProcessError.launchFailed
-        }
+            preservingDescriptor: preservingDescriptor,
+            windowSize: &size
+        )
 
         let descriptor = launch.masterFd
         let lifecycle = ChildLifecycle(pid: launch.pid)

@@ -5,6 +5,9 @@ import JTSCompanionDevices
 extension CompanionDeviceMCPHandler {
     func status(_ request: CompanionDeviceMCPRequest, targetBinding: String,
                 authorize: @escaping CompanionDevicesModel.MCPAuthorityCheck) async throws -> [String: Any] {
+        if ["createCode", "codeStatus", "cancelCode", "revokeRelay"].contains(request.action) {
+            return try await enrollmentStatus(request, targetBinding: targetBinding, authorize: authorize)
+        }
         let snapshot = try await devices.mcpSnapshot(createIdentity: request.action == "identity")
         try authorize()
         if request.action == "identity" {

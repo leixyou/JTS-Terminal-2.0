@@ -59,6 +59,7 @@ struct JTSTerminalApp: App {
         Window("Companion Devices", id: CompanionDevicesModel.windowID) {
             CompanionDevicesView()
         }
+        .modelContainer(sharedModelContainer)
         .defaultSize(width: 920, height: 640)
         .windowResizability(.contentMinSize)
         #endif

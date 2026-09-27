@@ -4,6 +4,7 @@ import Observation
 import JTSCompanionClient
 import JTSCompanionDevices
 import JTSCompanionIPC
+import JTSRelayEnrollment
 
 @Observable @MainActor
 final class CompanionDevicesModel {
@@ -137,6 +138,10 @@ final class CompanionDevicesModel {
     /// Re-reads encrypted trust for every independent lane; never exports private material to MCP.
     func relayConfiguration(deviceID: UUID) async throws -> CompanionIPCOpen {
         try await withRegistry { try await registry.openConfiguration(deviceID: deviceID) }
+    }
+
+    func enrollmentClient(relayOrigin: String) async throws -> EnrollmentClient {
+        try await withRegistry { try await registry.enrollmentClient(relayOrigin: relayOrigin) }
     }
 
     func mcpSnapshot(createIdentity: Bool = false) async throws -> CompanionDeviceSnapshot? {

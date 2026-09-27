@@ -15,6 +15,7 @@ let package = Package(
         .library(name: "JTSCompanionIPC", targets: ["JTSCompanionIPC"]),
         .library(name: "JTSCompanionClient", targets: ["JTSCompanionClient"]),
         .library(name: "JTSCompanionDevices", targets: ["JTSCompanionDevices"]),
+        .library(name: "JTSRelayEnrollment", targets: ["JTSRelayEnrollment"]),
         .library(name: "JTSCompanionServiceRuntime", targets: ["JTSCompanionServiceRuntime"])
     ],
     targets: [
@@ -23,12 +24,14 @@ let package = Package(
                 linkerSettings: [.unsafeFlags([cryptoVendor.appendingPathComponent("libJTFreeRDP-universal.a").path])]),
         .target(name: "JTSCompanionIPC"),
         .target(name: "JTSCompanionClient", dependencies: ["JTSCompanionIPC"]),
-        .target(name: "JTSCompanionDevices", dependencies: ["JTSCompanionIPC"]),
+        .target(name: "JTSRelayEnrollment", dependencies: ["JTSCompanionIPC"]),
+        .target(name: "JTSCompanionDevices", dependencies: ["JTSCompanionIPC", "JTSRelayEnrollment"]),
         .target(name: "JTSCompanionTransport", dependencies: ["CPinnedTLS", "JTSCompanionIPC"]),
         .target(name: "JTSCompanionServiceRuntime", dependencies: ["JTSCompanionTransport", "JTSCompanionIPC"]),
         .testTarget(name: "JTSCompanionIPCTests", dependencies: ["JTSCompanionIPC"]),
         .testTarget(name: "JTSCompanionClientTests", dependencies: ["JTSCompanionClient", "JTSCompanionIPC"]),
         .testTarget(name: "JTSCompanionDevicesTests", dependencies: ["JTSCompanionDevices"]),
+        .testTarget(name: "JTSRelayEnrollmentTests", dependencies: ["JTSRelayEnrollment"], resources: [.copy("Fixtures")]),
         .testTarget(name: "JTSCompanionServiceRuntimeTests", dependencies: ["JTSCompanionServiceRuntime", "JTSCompanionIPC"]),
         .testTarget(name: "JTSCompanionTransportTests", dependencies: ["JTSCompanionTransport", "JTSCompanionClient"],
                     resources: [.copy("Fixtures")])

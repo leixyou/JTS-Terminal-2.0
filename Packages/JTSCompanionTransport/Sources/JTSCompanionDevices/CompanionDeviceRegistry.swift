@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import JTSCompanionIPC
+import JTSRelayEnrollment
 
 /// Owns local trust, not remote pairing or authorization. Every operation reloads durable state.
 public actor CompanionDeviceRegistry {
@@ -75,6 +76,13 @@ public actor CompanionDeviceRegistry {
             relayURL: device.relayURL, allowWindows10TLS12: device.allowWindows10TLS12)
         do { try configuration.validate() } catch { throw CompanionDeviceError.corruptState }
         return configuration
+    }
+
+    /// Returns a signing client, never raw private material to the GUI or MCP response.
+    public func enrollmentClient(relayOrigin: String) async throws -> EnrollmentClient {
+        try begin(); defer { busy = false }
+        guard let stored = try await load() else { throw CompanionDeviceError.notInitialized }
+        return try EnrollmentClient(privateKey: stored.document.identity.privateKey, relayOrigin: relayOrigin)
     }
 
     private func begin() throws {

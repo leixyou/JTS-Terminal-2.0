@@ -2801,7 +2801,8 @@ private final class OrderedPTYProcessBackend: NSObject, TerminalProcessBackend, 
                     "jts-pty-launch-gate",
                     executable,
                 ] + arguments,
-                environment: gatedEnvironment
+                environment: gatedEnvironment,
+                preservingDescriptor: readyWriteDescriptor
             ) { masterFileDescriptor, childPID in
                 // Only the gated child may retain the write endpoint. Closing
                 // the parent's copy also makes an early child exit observable
@@ -3102,28 +3103,21 @@ private final class DarwinPTYProcessBackend: TerminalProcessBackend {
     ) throws {
         stop()
 
-        var fileDescriptor: Int32 = -1
         var initialSize = winsize(ws_row: rows, ws_col: columns, ws_xpixel: 0, ws_ypixel: 0)
-        let forkedPID = forkpty(&fileDescriptor, nil, nil, &initialSize)
-
-        if forkedPID == 0 {
-            for entry in environment {
-                let parts = entry.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
-                guard parts.count == 2 else { continue }
-                setenv(String(parts[0]), String(parts[1]), 1)
-            }
-
-            var argv = ([executable] + arguments).map { strdup($0) }
-            argv.append(nil)
-            _ = executable.withCString { executablePath in
-                execv(executablePath, &argv)
-            }
-            _exit(127)
+        var childEnvironment = ProcessInfo.processInfo.environment
+        for entry in environment {
+            let parts = entry.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2 else { continue }
+            childEnvironment[String(parts[0])] = String(parts[1])
         }
-
-        guard forkedPID > 0 else {
-            throw TerminalProcessBackendError.launchFailed(String(cString: strerror(errno)))
-        }
+        let launch = try PTYProcessLauncher.launch(
+            executable: executable,
+            arguments: arguments,
+            environment: childEnvironment.map { "\($0.key)=\($0.value)" },
+            windowSize: &initialSize
+        )
+        let fileDescriptor = launch.masterFd
+        let forkedPID = launch.pid
 
         masterFileDescriptor = fileDescriptor
         childPID = forkedPID

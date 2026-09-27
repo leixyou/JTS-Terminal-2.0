@@ -4,6 +4,70 @@ import Testing
 @testable import JTSTerminal
 
 struct ProcessExecutorCancellationTests {
+    @Test func unrelatedPTYCannotRetainCollectorReadDescriptor() async throws {
+        let collector = try ProcessPipeCollector(maximumBytes: 1_024)
+        let writer = try startBusyWriter(for: collector)
+        defer { writer.requestStop() }
+        let readiness = Pipe()
+        let readDescriptor = readiness.fileHandleForReading.fileDescriptor
+        let readyDescriptor = readiness.fileHandleForWriting.fileDescriptor
+        defer {
+            readiness.fileHandleForReading.closeFile()
+            readiness.fileHandleForWriting.closeFile()
+        }
+        try #require(fcntl(readDescriptor, F_SETFL, O_NONBLOCK) == 0)
+        // An explicit private channel must survive even when it starts out
+        // CLOEXEC; every unrelated descriptor must be closed by the child.
+        try #require(fcntl(readyDescriptor, F_SETFD, FD_CLOEXEC) == 0)
+        var size = winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
+        let script = """
+        [ -t 0 ] && [ -t 1 ] && [ -t 2 ] || exit 41
+        [ "$JTS_INHERITANCE_TEST" = ready ] || exit 42
+        printf '%s' "$$" >&\(readyDescriptor)
+        exec \(readyDescriptor)>&-
+        exec /bin/sleep 30
+        """
+        let child = try PTYProcessLauncher.launch(
+            executable: "/bin/sh",
+            arguments: ["-c", script],
+            environment: ["PATH=/usr/bin:/bin", "JTS_INHERITANCE_TEST=ready"],
+            preservingDescriptor: readyDescriptor,
+            windowSize: &size
+        )
+        defer {
+            _ = Darwin.kill(child.pid, SIGKILL)
+            var status: Int32 = 0
+            while Darwin.waitpid(child.pid, &status, 0) < 0, errno == EINTR {}
+            _ = Darwin.close(child.masterFd)
+        }
+        #expect(fcntl(readyDescriptor, F_GETFD) & FD_CLOEXEC != 0,
+                "Allowing child inheritance must not change the parent's descriptor flags")
+        readiness.fileHandleForWriting.closeFile()
+        let readyDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var acknowledgement = Data()
+        while ContinuousClock.now < readyDeadline, acknowledgement.isEmpty {
+            var buffer = [UInt8](repeating: 0, count: 64)
+            let count = Darwin.read(readDescriptor, &buffer, buffer.count)
+            if count > 0 { acknowledgement.append(contentsOf: buffer.prefix(count)) }
+            if count == 0 { break }
+            if acknowledgement.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        }
+        try #require(String(data: acknowledgement, encoding: .utf8) == String(child.pid))
+
+        collector.discardAndCloseAsynchronously()
+        let closeDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while ContinuousClock.now < closeDeadline, !writer.hasFinished {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(writer.hasFinished)
+        #expect(writer.terminalErrno == EPIPE,
+                "An unrelated, still-live PTY must not keep the collector's reader open")
+        var exitStatus: Int32 = 0
+        #expect(Darwin.waitpid(child.pid, &exitStatus, WNOHANG) == 0,
+                "The writer must receive EPIPE before the unrelated PTY exits")
+        _ = collector.finish()
+    }
+
     @Test func collectorClosesReadSourceImmediatelyAtEOF() async throws {
         let closeCompletion = CancellationOperationCompletion()
         let collector = try ProcessPipeCollector(

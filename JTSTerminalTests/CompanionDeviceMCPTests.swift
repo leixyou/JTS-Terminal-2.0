@@ -11,6 +11,28 @@ import Testing
 struct CompanionDeviceMCPTests {
     private let target = UUID().uuidString.lowercased()
 
+    @Test func accessCodeUsesDelegatedControlWithoutRDPAndRestrictsArguments() throws {
+        let create: [String: Any] = ["targetId": target, "action": "createCode", "relayURL": "https://relay.example.test",
+                                     "allowWindows10TLS12": true]
+        #expect(try CompanionDeviceMCPRequest(tool: .status, arguments: create).capabilities == [.desktopControl])
+        for action in ["codeStatus", "cancelCode"] {
+            let values: [String: Any] = ["targetId": target, "action": action, "invitationId": UUID().uuidString]
+            #expect(try CompanionDeviceMCPRequest(tool: .status, arguments: values).capabilities == [.desktopControl])
+            var invalid = values; invalid["allowWindows10TLS12"] = true
+            #expect(throws: WindowsMCPToolError.self) { try CompanionDeviceMCPRequest(tool: .status, arguments: invalid) }
+        }
+        for extra in ["sessionId", "privateKey", "approved"] {
+            var invalid = create; invalid[extra] = "injected"
+            #expect(throws: WindowsMCPToolError.self) { try CompanionDeviceMCPRequest(tool: .status, arguments: invalid) }
+        }
+        #expect(throws: WindowsMCPToolError.self) {
+            try CompanionDeviceMCPRequest(tool: .status, arguments: ["targetId": target, "action": "codeStatus"])
+        }
+        #expect(throws: WindowsMCPToolError.self) {
+            try CompanionDeviceMCPRequest(tool: .status, arguments: ["targetId": target, "relayURL": "https://relay.example.test"])
+        }
+    }
+
     @Test func independentToolsRejectSessionAndInjectedAuthority() throws {
         let valid: [String: Any] = ["targetId": target, "script": "Get-Date"]
         let parsed = try CompanionDeviceMCPRequest(tool: .exec, arguments: valid)
