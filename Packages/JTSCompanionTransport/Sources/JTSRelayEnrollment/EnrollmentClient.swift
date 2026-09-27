@@ -12,11 +12,16 @@ public final class EnrollmentURLTransport: EnrollmentHTTPTransport, @unchecked S
     public init() {
         let config = URLSessionConfiguration.ephemeral
         config.httpShouldSetCookies = false; config.httpCookieStorage = nil; config.urlCache = nil
+        config.tlsMinimumSupportedProtocolVersion = .TLSv12
         config.timeoutIntervalForRequest = 20; config.timeoutIntervalForResource = 30
         session = URLSession(configuration: config, delegate: EnrollmentTLSDelegate(), delegateQueue: nil)
     }
     deinit { session.invalidateAndCancel() }
     public func post(_ url: URL, body: Data) async throws -> (Int, Data) {
+        guard url.scheme == "https", url.host?.isEmpty == false,
+              url.user == nil, url.password == nil, url.fragment == nil, body.count <= 32768 else {
+            throw EnrollmentError.invalidMessage
+        }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (bytes, response) = try await session.bytes(for: request)

@@ -11,6 +11,56 @@ import Testing
 
 @MainActor @Suite(.serialized)
 struct CompanionDevicesModelTests {
+    @Test(arguments: [false, true])
+    func concurrentReadOnlySnapshotsShareRefreshAndItsFailure(failStorage: Bool) async throws {
+        let persistence = DeviceMemoryPersistence()
+        let (model, _, client, deviceID) = try await fixture(persistence: persistence)
+        let initialLoads = await persistence.loads
+        if failStorage { await persistence.remove() }
+        await persistence.blockNextLoad()
+        let first = Task { try await model.mcpSnapshot() }
+        await persistence.waitForBlockedLoad()
+        var secondStarted = false
+        let second = Task {
+            secondStarted = true
+            return try await model.mcpSnapshot()
+        }
+        while !secondStarted { await Task.yield() }
+        await persistence.releaseLoad()
+        for result in [await first.result, await second.result] {
+            switch result {
+            case .success(let snapshot):
+                #expect(!failStorage)
+                #expect(snapshot?.devices.first?.id == deviceID)
+            case .failure(let error):
+                #expect(failStorage)
+                #expect(error as? CompanionDeviceError == .storageUnavailable)
+            }
+        }
+        #expect(await persistence.loads == initialLoads + 1)
+        #expect(model.loaded == !failStorage)
+        #expect(!model.busy)
+        #expect(await persistence.creates == 1)
+        #expect(await client.opens == 0)
+    }
+
+    @Test func readOnlySnapshotStillRejectsConcurrentRevocation() async throws {
+        let persistence = DeviceMemoryPersistence()
+        let (model, _, _, _) = try await fixture(persistence: persistence)
+        await persistence.blockNextLoad()
+        let revocation = Task { await model.revokeSelected() }
+        await persistence.waitForBlockedLoad()
+        do {
+            _ = try await model.mcpSnapshot()
+            Issue.record("A read must not bypass an in-progress trust mutation")
+        } catch {
+            #expect(error as? CompanionDeviceError == .operationInProgress)
+        }
+        await persistence.releaseLoad()
+        await revocation.value
+        #expect(model.selected?.revokedAt != nil)
+    }
+
     @Test func readsDoNotCreateAnIdentityOrOpenANetworkConnection() async throws {
         let persistence = DeviceMemoryPersistence()
         let registry = CompanionDeviceRegistry(persistence: persistence)
@@ -267,10 +317,12 @@ struct CompanionDevicesModelTests {
 private actor DeviceMemoryPersistence: CompanionDevicePersistence {
     private var value: String?
     private(set) var creates = 0
+    private(set) var loads = 0
     private var shouldBlockLoad = false
     private var loadContinuation: CheckedContinuation<Void, Never>?
     private var startedContinuation: CheckedContinuation<Void, Never>?
     func load() async -> String? {
+        loads += 1
         if shouldBlockLoad {
             shouldBlockLoad = false
             await withCheckedContinuation {

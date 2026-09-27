@@ -12,6 +12,9 @@
     <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>JTS Terminal connects to explicitly approved Companion devices and relay addresses. This transport service does not discover devices, scan networks or open listening ports.</string>
+    <!-- The relay carrier requires HTTPS/WSS and uses its dedicated trust delegate;
+         pinned mutual TLS authenticates endpoints inside the carrier. -->
+    <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/></dict>
     <key>XPCService</key><dict><key>ServiceType</key><string>Application</string></dict>
 </dict>
 </plist>

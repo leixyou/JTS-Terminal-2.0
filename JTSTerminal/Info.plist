@@ -30,5 +30,9 @@
 	<string>$(INFOPLIST_KEY_NSHumanReadableCopyright)</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>$(INFOPLIST_KEY_NSLocalNetworkUsageDescription)</string>
+	<!-- User-supplied relay hosts use the dedicated HTTPS trust delegate.
+	     Enrollment requires HTTPS and authenticates its encrypted exchange. -->
+	<key>NSAppTransportSecurity</key>
+	<dict><key>NSAllowsArbitraryLoads</key><true/></dict>
 </dict>
 </plist>

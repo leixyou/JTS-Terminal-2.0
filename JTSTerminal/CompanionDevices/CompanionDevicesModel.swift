@@ -21,6 +21,8 @@ final class CompanionDevicesModel {
     private let registry: CompanionDeviceRegistry
     let journal: CompanionJobJournal?
     private let makeConnection: @Sendable () -> any CompanionDeviceConnection
+    @ObservationIgnored private var refreshing = false
+    @ObservationIgnored private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var registryLocked = false
     @ObservationIgnored private var registryWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -42,9 +44,18 @@ final class CompanionDevicesModel {
     var connectedCount: Int { routes.values.filter(\.hasRoute).count }
 
     func refresh() async {
+        if refreshing {
+            await withCheckedContinuation { refreshWaiters.append($0) }
+            return
+        }
         guard !storeBusy else { return }
-        storeBusy = true; storeError = nil
-        defer { storeBusy = false }
+        storeBusy = true; refreshing = true; storeError = nil
+        defer {
+            storeBusy = false; refreshing = false
+            let waiters = refreshWaiters
+            refreshWaiters.removeAll()
+            for waiter in waiters { waiter.resume() }
+        }
         do {
             let current = try await withRegistry { try await registry.snapshot() }
             snapshot = current; loaded = true
@@ -145,7 +156,9 @@ final class CompanionDevicesModel {
     }
 
     func mcpSnapshot(createIdentity: Bool = false) async throws -> CompanionDeviceSnapshot? {
-        guard !storeBusy else { throw CompanionDeviceError.operationInProgress }
+        // Independent view tasks may share a read refresh. Mutations retain
+        // their existing busy guard and never join an identity-creating call.
+        guard !storeBusy || (!createIdentity && refreshing) else { throw CompanionDeviceError.operationInProgress }
         await refresh()
         guard loaded, storeError == nil else { throw CompanionDeviceError.storageUnavailable }
         if createIdentity, snapshot == nil {

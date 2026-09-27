@@ -36,3 +36,16 @@ uses the normal Windows UAC boundary.
 
 The immutable protocol snapshot is in `Protocols/JTSRelay/1.0.0-enrollment.1`.
 Live Windows installation, a real remote command, and RDP login remain separate acceptance checks.
+
+## macOS relay certificate policy
+
+The app and Companion transport helper declare the ATS exception needed for
+their dedicated relay trust delegates to accept user-supplied self-signed or
+expired certificates. Enrollment still rejects plaintext HTTP, URL credentials,
+redirects and oversized responses; endpoint traffic still uses pinned mutual TLS
+inside HTTPS/WSS. The invitation exchange is independently authenticated and
+encrypted. This exception needs justification during App Store review; a working
+development build does not certify that review gate.
+
+Apple documents why an ATS-protected domain cannot loosen server trust through
+a delegate in [Performing manual server trust authentication](https://developer.apple.com/documentation/Foundation/performing-manual-server-trust-authentication).

@@ -4,6 +4,16 @@ import XCTest
 @testable import JTSRelayEnrollment
 
 final class EnrollmentHTTPTests: XCTestCase {
+    func testTransportRejectsPlaintextAndCredentialURLsBeforeNetwork() async throws {
+        let transport = EnrollmentURLTransport()
+        for value in ["http://127.0.0.1:1/v1/enrollment", "https://user:password@127.0.0.1:1/v1/enrollment"] {
+            do {
+                _ = try await transport.post(URL(string: value)!, body: Data())
+                XCTFail("Invalid transport URL accepted")
+            } catch EnrollmentError.invalidMessage { }
+        }
+    }
+
     func testHTTPSRelayOneUseBindingAndRetryWithoutRDP() async throws {
         guard let origin = ProcessInfo.processInfo.environment["JTS_ENROLLMENT_TEST_ORIGIN"] else {
             throw XCTSkip("Requires a separate authorized enrollment test relay")
