@@ -4664,7 +4664,7 @@ struct JTSTerminalTests {
 
     @Test func tunnelFailureMessageGuidesKnownHostsPermissionFixes() async throws {
         let message = SSHTunnelManager.failureMessage(
-            errorText: "hostkeys_find_by_key_hostfile: hostkeys_foreach failed for /Users/parker.he/.ssh/known_hosts: Operation not permitted\nHost key verification failed.",
+            errorText: "hostkeys_find_by_key_hostfile: hostkeys_foreach failed for /Users/example/.ssh/known_hosts: Operation not permitted\nHost key verification failed.",
             terminationStatus: 255
         )
 
