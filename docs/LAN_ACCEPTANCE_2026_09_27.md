@@ -32,6 +32,6 @@ Installed Agent SHA-256: `cb6057777198578fa0479621c561e3e099e879ad9768d08ee13f08
 
 ## Observed limits
 
-The first close request after the update returned `XPC_NOT_CONNECTED`. A subsequent close/open created a new session and passed command/file recovery. That isolated failure remains recorded for follow-up; this run is not described as error-free operation.
+The first close request after the update returned `XPC_NOT_CONNECTED`. Source review then found an unnecessary clipboard-isolation precondition before local teardown. Mac commit `9955b8b` removes that precondition for authorized close only, preserving grant checks and the barrier before remote input. All 16 clipboard regression tests passed, including injected isolation failure and denied unauthorized close. The rebuilt daily application then closed successfully on its first attempt, opened a new session, and passed Unicode commands before and after the close. The original failure and successful follow-up are both retained in the acceptance history.
 
 This direct-LAN run does not close independent relay end-to-end transport, Windows 10/Server 2019 real-host acceptance, unattended SCM lifecycle, production signing, or full-app release gates. Private host names, account names, screenshots and per-call evidence remain outside the public repository.
