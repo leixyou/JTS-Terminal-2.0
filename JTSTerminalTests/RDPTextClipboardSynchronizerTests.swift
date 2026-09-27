@@ -684,6 +684,75 @@ struct RDPTextClipboardSynchronizerTests {
         ))
     }
 
+    @Test(arguments: [true, false]) @MainActor
+    func closeRequiresAuthorizationButNotClipboardIsolation(authorized: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-close-clipboard-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = RemoteSession(
+            name: "Closing Windows",
+            host: "windows.test",
+            username: "operator",
+            connectionType: .rdp
+        )
+        target.mcpEnabled = authorized
+        try target.setRDPProfile(RDPConnectionProfile(
+            clipboardEnabled: true,
+            permissionPolicy: RemoteTargetPermissionPolicy(
+                maximumCapabilities: [.desktopControl],
+                controlLeaseCapabilities: [],
+                requireExternalDataConsent: false
+            )
+        ))
+        let grants = RemoteClientGrantStore(
+            storageURL: directory.appendingPathComponent("grants.json")
+        )
+        var isolationCalls = 0
+        let store = RDPDesktopRuntimeStore(
+            openOperationExecutorForTesting: { _, _, _ in
+                throw WindowsMCPToolError(
+                    code: .runtimeFailure, message: "No connection expected."
+                )
+            },
+            grantStoreForTesting: grants,
+            clipboardIsolationBarrierForTesting: { _, _, _ in
+                isolationCalls += 1
+                throw FreeRDPXPCFailure(
+                    code: "XPC_NOT_CONNECTED",
+                    message: "The FreeRDP XPC helper is not connected."
+                )
+            }
+        )
+        defer { store.stopAllImmediately() }
+        let sessionID = store.installActiveDesktopForTesting(target: target)
+        let arguments: [String: Any] = [
+            "targetId": target.targetID.uuidString,
+            "sessionId": sessionID.uuidString,
+            "_jtsClientID": "mcp-registration:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        ]
+
+        if authorized {
+            let response = try await store.handleMCP(
+                tool: .closeDesktop, target: target, arguments: arguments
+            )
+            #expect(response.structuredContent["closed"] as? Bool == true)
+            #expect(store.sessionID(for: target.targetID) == nil)
+            #expect(store.state(for: target.targetID)?.phase == .closed)
+        } else {
+            do {
+                _ = try await store.handleMCP(
+                    tool: .closeDesktop, target: target, arguments: arguments
+                )
+                Issue.record("Closing a desktop must still require desktopControl authorization.")
+            } catch let failure as WindowsMCPToolError {
+                #expect(failure.code == .permissionDenied)
+            }
+            #expect(store.sessionID(for: target.targetID) == sessionID)
+            #expect(store.state(for: target.targetID)?.phase == .connected)
+        }
+        #expect(isolationCalls == 0)
+    }
+
     @Test @MainActor
     func remoteMutationFailsClosedUntilClipboardIsolationIsAcknowledged() async throws {
         let target = RemoteSession(

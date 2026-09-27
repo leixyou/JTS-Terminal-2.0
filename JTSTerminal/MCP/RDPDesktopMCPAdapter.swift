@@ -382,7 +382,7 @@ extension RDPDesktopRuntimeStore {
                     ?? clientDisplayIdentity,
                 capabilities: capabilities,
                 survivesConnectionTransition: survivesConnectionTransition(for: tool),
-                deferClipboardSuspensionUntilPreparation: tool.requiresCompanion,
+                deferClipboardSuspensionUntilPreparation: tool.requiresCompanion || tool == .closeDesktop,
                 startedAt: startedAt
             )
             let operationTask = Task { @MainActor [weak self] in
@@ -393,7 +393,9 @@ extension RDPDesktopRuntimeStore {
                     )
                 }
                 try self.requireAuthorizedOperation(operationToken)
-                if !tool.requiresCompanion {
+                // Local teardown must remain available when the remote clipboard
+                // isolation acknowledgement can no longer be obtained.
+                if !tool.requiresCompanion && tool != .closeDesktop {
                     try await self.prepareAuthorizedOperation(operationToken)
                 }
                 try self.requireAuthorizedOperation(operationToken)
