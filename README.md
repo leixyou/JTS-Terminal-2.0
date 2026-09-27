@@ -1,8 +1,30 @@
 # JTS Terminal
 
-JTS Terminal is a native remote administration workspace for macOS, with SSH,
-SFTP, tunnels, native RDP and direct Windows Companion operations. This repository
-also includes the iOS client and its tests.
+**One terminal for AI to operate remote machines like local ones.**
+
+**一个终端，让 AI 像操作本机一样操控其他设备。**
+
+Connect your AI assistant to JTS Terminal once through MCP. From one native Mac
+workspace, it can operate your authorized servers and paired Windows computers:
+run commands, manage files, inspect interfaces and perform structured UI actions.
+JTS routes each tool call to the selected machine and returns its results to the
+AI, keeping remote work in the same workflow as local work.
+
+- **Commands and files:** use SSH/SFTP for SSH hosts, or direct Companion calls
+  for Windows PowerShell, files and background tasks.
+- **Windows interfaces:** inspect and operate supported application controls
+  through UI Automation, with RDP available for the visible desktop.
+- **Across networks:** use a direct RDP channel on reachable Windows machines,
+  or the encrypted relay route when direct access is unavailable. Independent
+  Companion control can operate without an open RDP desktop or a successful RDP login.
+
+Device permissions, paired identities and revocation apply to remote actions.
+Enabling AI control also delegates that device's pairing workflow, so routine
+operations do not add a second pairing confirmation.
+
+The native workspace also includes SSH terminals, SFTP, tunnels and RDP for
+hands-on administration. This repository contains the Apple clients and their tests;
+the primary AI control workspace described here is the macOS app.
 
 This is a development preview of the public source. It is not a released App
 Store build or a claim that every environment has passed unattended Windows,
