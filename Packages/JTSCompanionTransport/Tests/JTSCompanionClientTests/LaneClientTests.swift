@@ -5,7 +5,7 @@ import JTSCompanionIPC
 
 final class LaneClientTests: XCTestCase {
     func testEachLaneOpensAndUsesIndependentVersionTwoByteProtocol() async throws {
-        for lane in [CompanionIPCLane.file, .rdp] {
+        for lane in [CompanionIPCLane.file, .rdp, .desktop] {
             let mock = MockTransport(), grant = UUID()
             let client = CompanionLaneClient(transportFactory: { mock })
             let state = try await client.open(configuration: testConfiguration(), lane: lane, grantID: grant)

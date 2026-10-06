@@ -17,12 +17,12 @@ final class CompanionDevicesModel {
     private(set) var loaded = false
     private(set) var selectedID: UUID?
     private(set) var routes: [UUID: CompanionDeviceRoute] = [:]
-    private var storeBusy = false
+    var storeBusy = false
     private var storeError: String?
-    private let registry: CompanionDeviceRegistry
+    let registry: CompanionDeviceRegistry
     let revocations: CompanionRevocationStore?
     let journal: CompanionJobJournal?
-    private let makeConnection: @Sendable () -> any CompanionDeviceConnection
+    let makeConnection: @Sendable () -> any CompanionDeviceConnection
     @ObservationIgnored private var refreshing = false
     @ObservationIgnored private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var registryLocked = false
@@ -198,7 +198,7 @@ final class CompanionDevicesModel {
 
     // The registry deliberately rejects reentrancy. Serialize only durable reads/mutations,
     // leaving separate devices' network operations free to run concurrently.
-    private func withRegistry<T>(_ body: () async throws -> T) async rethrows -> T {
+    func withRegistry<T>(_ body: () async throws -> T) async rethrows -> T {
         if registryLocked { await withCheckedContinuation { registryWaiters.append($0) } }
         else { registryLocked = true }
         defer {
@@ -206,6 +206,14 @@ final class CompanionDevicesModel {
             else { registryWaiters.removeFirst().resume() }
         }
         return try await body()
+    }
+
+    func applyRelaySnapshot(_ value: CompanionDeviceSnapshot, changedIDs: [UUID]) {
+        snapshot = value
+        for id in changedIDs {
+            routes[id]?.disconnect()
+            NotificationCenter.default.post(name: .jtsCompanionDeviceTrustChanged, object: id)
+        }
     }
 
     func failed(_ error: Error, route: CompanionDeviceRoute, token: UUID) {

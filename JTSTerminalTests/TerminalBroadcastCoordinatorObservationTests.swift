@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import JTSTerminal
 
+@Suite(.serialized)
 @MainActor
 struct TerminalBroadcastCoordinatorObservationTests {
     @Test func duplicatePaneTargetsForwardOneSessionChangeAndDetachOnClose() throws {

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum CompanionIPCLane: String, Codable, Sendable { case file, rdp }
+public enum CompanionIPCLane: String, Codable, Sendable { case file, rdp, desktop }
 
 public struct CompanionIPCLaneOpen: CompanionIPCPayload {
     public static let requiredKeys: Set<String> = ["privateKey", "peerSPKI", "relayURL", "allowWindows10TLS12", "lane", "grantID"]

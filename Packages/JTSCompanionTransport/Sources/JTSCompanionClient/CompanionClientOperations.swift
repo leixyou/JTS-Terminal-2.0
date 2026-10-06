@@ -2,6 +2,9 @@ import Foundation
 import JTSCompanionIPC
 
 public extension CompanionTransportClient {
+    func authorizeDesktop(_ request: CompanionIPCDesktopAuthorization) async throws -> CompanionDesktopAcknowledgement {
+        try await perform(.authorizeDesktop, payload: request, response: CompanionDesktopAcknowledgement.self)
+    }
     func state() async throws -> CompanionIPCState {
         try await perform(.state, payload: CompanionIPCEmpty(), response: CompanionIPCState.self)
     }

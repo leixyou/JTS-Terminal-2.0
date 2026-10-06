@@ -218,14 +218,44 @@ private struct RDPDesktopWindowContent: View {
     @ObservedObject var runtime: RDPDesktopRuntimeStore
     let openProperties: () -> Void
     let toggleFullScreen: () -> Void
+    @ObservedObject private var companion = CompanionDesktopRuntime.shared
+    @State private var route: CompanionDesktopRoutePreference = .rdp
+    @State private var routeError: String?
     @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.defaultLanguage.rawValue
 
     var body: some View {
-        RDPDesktopWindowSurface(target: target, presentation: runtime.presentation(for: target),
-            openServerProperties: openProperties, toggleFullScreen: toggleFullScreen)
+        VStack(spacing: 0) {
+            HStack {
+                Picker("Desktop", selection: Binding(get: { route }, set: { selected in
+                    Task {
+                        do {
+                            await runtime.close(targetID: target.targetID)
+                            try await companion.choose(selected, target: target)
+                            route = selected; routeError = nil
+                        } catch { routeError = companion.safeCode(error) }
+                    }
+                })) {
+                    Text("RDP").tag(CompanionDesktopRoutePreference.rdp)
+                    Text("Companion").tag(CompanionDesktopRoutePreference.companion)
+                }.pickerStyle(.segmented).frame(width: 220)
+                Spacer()
+                if let routeError { Text(routeError).font(.caption).foregroundStyle(.orange) }
+            }.padding(8)
+            if route == .companion {
+                CompanionDesktopWorkspace(target: target, toggleFullScreen: toggleFullScreen)
+            } else {
+                RDPDesktopWindowSurface(target: target, presentation: runtime.presentation(for: target),
+                    openServerProperties: openProperties, toggleFullScreen: toggleFullScreen)
+            }
+        }
             .controlSize(.small)
             .environment(\.appLanguage, AppLanguage(rawValue: languageRawValue) ?? .defaultLanguage)
             .accessibilityIdentifier("rdp-independent-desktop")
+            .task { if let binding = try? await companion.route(for: target) { route = binding.effectiveDesktopRoute } }
+            .onReceive(NotificationCenter.default.publisher(for: .jtsCompanionTargetRouteChanged)) { notification in
+                guard notification.object as? UUID == target.targetID else { return }
+                Task { if let binding = try? await companion.route(for: target) { route = binding.effectiveDesktopRoute } }
+            }
     }
 }
 

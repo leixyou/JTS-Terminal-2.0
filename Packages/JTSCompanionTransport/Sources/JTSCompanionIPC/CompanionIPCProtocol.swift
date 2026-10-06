@@ -28,6 +28,7 @@ public enum CompanionIPCLimits {
 
 public enum CompanionIPCOperation: String, Codable, Sendable {
     case open, state, close, status, submit, job, cancel, output
+    case authorizeDesktop
     case openLane, readLane, writeLane, closeLane
 
     public var isLaneOperation: Bool {

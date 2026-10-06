@@ -33,7 +33,7 @@ let package = Package(
         .testTarget(name: "JTSCompanionDevicesTests", dependencies: ["JTSCompanionDevices"], resources: [.copy("Fixtures")]),
         .testTarget(name: "JTSRelayEnrollmentTests", dependencies: ["JTSRelayEnrollment"], resources: [.copy("Fixtures")]),
         .testTarget(name: "JTSCompanionServiceRuntimeTests", dependencies: ["JTSCompanionServiceRuntime", "JTSCompanionIPC"]),
-        .testTarget(name: "JTSCompanionTransportTests", dependencies: ["JTSCompanionTransport", "JTSCompanionClient"],
+        .testTarget(name: "JTSCompanionTransportTests", dependencies: ["JTSCompanionTransport", "JTSCompanionClient", "JTSRelayEnrollment"],
                     resources: [.copy("Fixtures")])
     ]
 )

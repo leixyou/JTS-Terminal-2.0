@@ -83,7 +83,7 @@ public actor CompanionControlClient {
         await close(); throw CompanionControlError.invalidResponse
     }
 
-    private func request<P: Encodable, R: ControlResult>(_ operation: String, grantID: UUID, parameters: P) async throws -> R {
+    func request<P: Encodable, R: ControlResult>(_ operation: String, grantID: UUID, parameters: P) async throws -> R {
         guard !closed else { throw CompanionTransportError.connectionClosed }
         guard !busy else { throw CompanionTransportError.operationInProgress }
         let id = UUID().uuidString.lowercased()

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum RelayLane: String, Codable, CaseIterable, Sendable { case control, file, rdp }
+public enum RelayLane: String, Codable, CaseIterable, Sendable { case control, file, rdp, desktop }
 public enum RelayOperation: String, Codable, Sendable { case presence, devices, sessions, poll }
 
 public enum CompanionTransportError: Error, Equatable, Sendable {
@@ -167,6 +167,30 @@ public struct RelaySessionOffer: Decodable, Sendable, CustomStringConvertible, C
 public struct RelayInfo: Decodable, Sendable {
     public let protocolVersion: Int
     public let lanes: [RelayLane]
+}
+
+/// Additive capabilities live outside the frozen, three-lane `/v1/info` response.
+public struct RelayCapabilities: Decodable, Sendable {
+    public let protocolVersion: Int
+    public let extensions: [String]
+    public let lanes: [RelayLane]
+    public let desktopMaximumBufferedBytes: Int
+    public let desktopBytesPerSecond: Int
+
+    public func validate() throws {
+        guard protocolVersion == 1 else { throw CompanionTransportError.unsupportedVersion }
+        guard !extensions.isEmpty, extensions.count <= 16,
+              Set(extensions).count == extensions.count,
+              extensions.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 64 && $0.utf8.allSatisfy {
+                  (97...122).contains($0) || (48...57).contains($0) || $0 == 45
+              }}), lanes.count <= 4, Set(lanes).count == lanes.count,
+              Set([RelayLane.control, .file, .rdp]).isSubset(of: Set(lanes)),
+              lanes.contains(.desktop) == extensions.contains("desktop-v1"),
+              (1...65_536).contains(desktopMaximumBufferedBytes),
+              (16_384...1_073_741_824).contains(desktopBytesPerSecond) else {
+            throw CompanionTransportError.invalidResponse
+        }
+    }
 }
 
 enum RelayJSON {

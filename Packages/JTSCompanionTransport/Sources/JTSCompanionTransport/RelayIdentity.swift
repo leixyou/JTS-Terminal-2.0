@@ -23,6 +23,10 @@ public struct RelayIdentity: Sendable, CustomStringConvertible, CustomDebugStrin
         value.utf8.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }
 
+    func signDesktopBinding(_ proof: Data) throws -> String {
+        try key.signature(for: proof).rawRepresentation.base64EncodedString()
+    }
+
     public func proof(endpoint: RelayEndpoint, operation: RelayOperation, challenge: RelayChallenge,
                       payload: Data, now: Date = Date()) throws -> RelayProof {
         let canonical = try Self.canonicalProof(endpoint: endpoint, deviceID: deviceID, operation: operation,

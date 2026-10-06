@@ -116,9 +116,17 @@ public actor CompanionDeviceCoordinator {
         var authenticated: (any CompanionSecureChannel)?
         do {
             guard relay.deviceID == identity.deviceID else { throw CompanionTransportError.invalidIdentity }
-            let info = try await relay.info()
-            try requireGeneration(deviceID, generation)
-            guard info.lanes.contains(lane) else { throw CompanionTransportError.unsupportedLane }
+            if lane == .desktop {
+                let capabilities = try await relay.capabilities()
+                try requireGeneration(deviceID, generation)
+                guard capabilities.extensions.contains("desktop-v1"), capabilities.lanes.contains(lane) else {
+                    throw CompanionTransportError.unsupportedLane
+                }
+            } else {
+                let info = try await relay.info()
+                try requireGeneration(deviceID, generation)
+                guard info.lanes.contains(lane) else { throw CompanionTransportError.unsupportedLane }
+            }
             let ticket = try await relay.createSession(peerDeviceID: deviceID, lane: lane)
             try requireGeneration(deviceID, generation)
             let raw = try await carrierFactory.connect(endpoint: relay.endpoint, ticket: ticket, lane: lane)

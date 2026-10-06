@@ -12,13 +12,14 @@ protocol CompanionRuntimeSession: Sendable {
 }
 
 struct PinnedCompanionRuntimeSession: CompanionRuntimeSession {
+    let identity: RelayIdentity
     let relay: RelayHTTPClient
     let coordinator: CompanionDeviceCoordinator
     let peer: PairedCompanionDevice
 
     init(_ input: CompanionIPCOpen) throws {
         try input.validate()
-        let identity = RelayIdentity(privateKey: try P256.Signing.PrivateKey(rawRepresentation: input.privateKey))
+        identity = RelayIdentity(privateKey: try P256.Signing.PrivateKey(rawRepresentation: input.privateKey))
         peer = try PairedCompanionDevice(publicKeySPKI: input.peerSPKI, allowedLanes: [.control],
                                         allowWindows10TLS12: input.allowWindows10TLS12)
         guard peer.deviceID != identity.deviceID, let url = URL(string: input.relayURL) else {
@@ -45,6 +46,10 @@ struct PinnedCompanionRuntimeSession: CompanionRuntimeSession {
     func execute(_ request: CompanionIPCRequest) async throws -> Data {
         let client = try await coordinator.controlClient(deviceID: peer.deviceID)
         switch request.operation {
+        case .authorizeDesktop:
+            let input = try CompanionIPCCodec.decodePayload(request.payload, as: CompanionIPCDesktopAuthorization.self)
+            return try CompanionIPCCodec.encodePayload(await client.authorizeDesktop(input, identity: identity,
+                endpoint: relay.endpoint, peerSPKI: peer.publicKeySPKI))
         case .status:
             let input = try CompanionIPCCodec.decodePayload(request.payload, as: CompanionIPCGrant.self)
             return try CompanionIPCCodec.encodePayload(await client.status(grantID: input.grantID))

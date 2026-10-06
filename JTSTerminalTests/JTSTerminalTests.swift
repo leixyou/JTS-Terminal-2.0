@@ -128,6 +128,8 @@ private func approvedGrantStore(
                 .commandOutput,
                 .terminalOutput,
             ]
+        case .macDesktop:
+            externalDataTypes = []
         case .rdp:
             externalDataTypes = [
                 .targetMetadata,
@@ -430,6 +432,9 @@ private func waitForStructuredCommandActivity(
     return true
 }
 
+// PTY and AppKit fixtures share host resources. Keep member tests sequential;
+// concurrency within each lifecycle/broadcast test remains exercised.
+@Suite(.serialized)
 struct JTSTerminalTests {
 
     @Test func modelContainerFactoryBuildsCompleteInMemorySchema() async throws {

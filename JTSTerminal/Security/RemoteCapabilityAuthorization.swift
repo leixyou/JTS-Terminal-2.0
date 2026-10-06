@@ -180,6 +180,8 @@ extension RemoteSession {
             targetFields = [
                 username.trimmingCharacters(in: .whitespacesAndNewlines),
             ]
+        case .macDesktop:
+            targetFields = [host.trimmingCharacters(in: .whitespacesAndNewlines), String(port)]
         case .rdp:
             let profile = rdpProfile
             targetFields = [
@@ -198,6 +200,7 @@ extension RemoteSession {
         switch connectionType {
         case .ssh: return .sshDefault
         case .localShell: return .localShellDefault
+        case .macDesktop: return RemoteTargetPermissionPolicy(maximumCapabilities: [], controlLeaseCapabilities: [])
         case .rdp:
             let profile = rdpProfile
             guard !profile.persistentMCPControlEnabled else {

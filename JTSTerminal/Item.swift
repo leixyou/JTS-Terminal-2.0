@@ -22,6 +22,7 @@ nonisolated enum RemoteConnectionType: String, CaseIterable, Identifiable, Codab
     case ssh = "SSH"
     case localShell = "Local Shell"
     case rdp = "RDP"
+    case macDesktop = "Mac Desktop"
 
     var id: String { rawValue }
 
@@ -29,7 +30,7 @@ nonisolated enum RemoteConnectionType: String, CaseIterable, Identifiable, Codab
         switch self {
         case .ssh, .localShell:
             return true
-        case .rdp:
+        case .rdp, .macDesktop:
             return AppReleasePolicy.includesNativeRDP
         }
     }
@@ -44,6 +45,8 @@ nonisolated enum RemoteConnectionType: String, CaseIterable, Identifiable, Codab
             return "SSH"
         case .localShell:
             return "Local Shell"
+        case .macDesktop:
+            return AppReleasePolicy.includesNativeRDP ? "Mac Desktop" : "Unsupported"
         case .rdp:
             #if ENABLE_RDP_2
             return "RDP"
@@ -57,6 +60,8 @@ nonisolated enum RemoteConnectionType: String, CaseIterable, Identifiable, Codab
         switch self {
         case .ssh, .localShell:
             return 22
+        case .macDesktop:
+            return 49_871
         case .rdp:
             return 3_389
         }
@@ -75,6 +80,8 @@ nonisolated enum RemoteConnectionType: String, CaseIterable, Identifiable, Codab
         switch trimmed.lowercased().replacingOccurrences(of: "_", with: "-") {
         case "local-shell", "localshell":
             return (.localShell, true)
+        case "mac-desktop", "mac desktop":
+            return AppReleasePolicy.includesNativeRDP ? (.macDesktop, true) : (.ssh, false)
         case "rdp":
             return AppReleasePolicy.includesNativeRDP ? (.rdp, true) : (.ssh, false)
         default:
@@ -184,7 +191,7 @@ final class RemoteSession {
             return "\(username)@\(host):\(port)"
         case .localShell:
             return "Local shell"
-        case .rdp:
+        case .rdp, .macDesktop:
             guard !host.isEmpty else { return "Host not configured" }
             return "\(host):\(port)"
         }
@@ -196,6 +203,8 @@ final class RemoteSession {
             return "\(username.trimmingCharacters(in: .whitespacesAndNewlines))@\(host.trimmingCharacters(in: .whitespacesAndNewlines)):\(port)"
         case .localShell:
             return "local-shell"
+        case .macDesktop:
+            return "mac-desktop:\(host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()):\(port)"
         case .rdp:
             #if ENABLE_RDP_2
             let domain = rdpProfile.domain
@@ -214,6 +223,8 @@ final class RemoteSession {
                 && (1...65_535).contains(port)
         case .localShell:
             return true
+        case .macDesktop:
+            return !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (1...65_535).contains(port)
         case .rdp:
             let hasHost = !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             let hasUsername = !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

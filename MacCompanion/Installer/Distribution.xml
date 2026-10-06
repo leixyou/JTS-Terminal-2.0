@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>JTS Mac Companion</title>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <allowed-os-versions><os-version min="14.0"/></allowed-os-versions>
+    <choices-outline><line choice="companion"/></choices-outline>
+    <choice id="companion" visible="false" title="JTS Mac Companion">
+        <pkg-ref id="com.jtstools.mac-companion"/>
+    </choice>
+    <pkg-ref id="com.jtstools.mac-companion" auth="Root">MacCompanion.pkg</pkg-ref>
+</installer-gui-script>

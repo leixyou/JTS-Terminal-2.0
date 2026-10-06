@@ -12,7 +12,7 @@ public struct CompanionControlStatus: CompanionIPCPayload {
 
     public func validate() throws {
         guard Set(capabilities).count == capabilities.count,
-              Set(capabilities).isSubset(of: ["device.status", "job.submit", "job.get", "job.cancel", "job.output"]),
+              Set(capabilities).isSubset(of: ["device.status", "job.submit", "job.get", "job.cancel", "job.output", "desktop.authorize"]),
               (1...65536).contains(maximumPayloadBytes), (1...32768).contains(maximumOutputChunkBytes) else {
             throw ControlResultValidationError.invalidValue
         }

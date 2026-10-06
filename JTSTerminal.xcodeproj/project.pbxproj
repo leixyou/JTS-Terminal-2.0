@@ -42,6 +42,8 @@
 		7E3001032FD0000000000001 /* FreeRDP-cpufeatures-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7E2000122FC0000000000002 /* FreeRDP-cpufeatures-NOTICE.txt */; };
 		7E5000012FF0000000000001 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 7E5000102FF0000000000001 /* main.c */; };
 		7E5000032FF0000000000001 /* JTSSHAskpass in Embed SSH Askpass Helper */ = {isa = PBXBuildFile; fileRef = 7E5000122FF0000000000001 /* JTSSHAskpass */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		7E9000013010000000000001 /* RemoteDesktopCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7E9000033010000000000001 /* RemoteDesktopCore */; };
+		7E9000023010000000000001 /* RemoteDesktopCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7E9000043010000000000001 /* RemoteDesktopCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -259,6 +261,7 @@
 				7E3000012FD0000000000001 /* SwiftTerm in Frameworks */,
 				7E8000153010000000000001 /* JTSCompanionClient in Frameworks */,
 				7E8000193010000000000001 /* JTSCompanionDevices in Frameworks */,
+				7E9000013010000000000001 /* RemoteDesktopCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -268,6 +271,7 @@
 			files = (
 				7E8000183010000000000001 /* JTSCompanionIPC in Frameworks */,
 				7E80001A3010000000000001 /* JTSCompanionDevices in Frameworks */,
+				7E9000023010000000000001 /* RemoteDesktopCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -518,6 +522,7 @@
 				7E0000022FA3000000000001 /* SwiftTerm */,
 				7E8000723010000000000001 /* JTSCompanionClient */,
 				7E8000753010000000000001 /* JTSCompanionDevices */,
+				7E9000033010000000000001 /* RemoteDesktopCore */,
 			);
 			productName = JTSTerminalRDP2;
 			productReference = 7E3000062FD0000000000001 /* JTS Terminal.app */;
@@ -543,6 +548,7 @@
 			packageProductDependencies = (
 				7E8000743010000000000001 /* JTSCompanionIPC */,
 				7E8000763010000000000001 /* JTSCompanionDevices */,
+				7E9000043010000000000001 /* RemoteDesktopCore */,
 			);
 			productName = JTSTerminalRDP2Tests;
 			productReference = 7E3000072FD0000000000001 /* JTSTerminalRDP2Tests.xctest */;
@@ -643,6 +649,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				7E8000703010000000000001 /* XCLocalSwiftPackageReference "Packages/JTSCompanionTransport" */,
+				7E9000053010000000000001 /* XCLocalSwiftPackageReference "Packages/RemoteDesktopCore" */,
 				7E0000012FA3000000000001 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				7E1000252FB0000000000001 /* XCRemoteSwiftPackageReference "Citadel" */,
 				7E1000262FB0000000000001 /* XCRemoteSwiftPackageReference "swift-nio" */,
@@ -1731,6 +1738,7 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/JTSCompanionTransport;
 		};
+		7E9000053010000000000001 /* XCLocalSwiftPackageReference "Packages/RemoteDesktopCore" */ = {isa = XCLocalSwiftPackageReference; relativePath = Packages/RemoteDesktopCore; };
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -1832,6 +1840,8 @@
 			package = 7E1000282FB0000000000001 /* XCRemoteSwiftPackageReference "swift-crypto" */;
 			productName = Crypto;
 		};
+		7E9000033010000000000001 /* RemoteDesktopCore */ = {isa = XCSwiftPackageProductDependency; package = 7E9000053010000000000001; productName = RemoteDesktopCore; };
+		7E9000043010000000000001 /* RemoteDesktopCore */ = {isa = XCSwiftPackageProductDependency; package = 7E9000053010000000000001; productName = RemoteDesktopCore; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3021355F2FA23D6A009C2A46 /* Project object */;

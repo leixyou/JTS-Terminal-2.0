@@ -11,9 +11,15 @@ nonisolated protocol CompanionDeviceConnection: Sendable {
     func job(grantID: UUID, jobID: UUID) async throws -> CompanionJobReceipt
     func cancel(grantID: UUID, jobID: UUID) async throws -> CompanionJobReceipt
     func output(_ request: CompanionIPCOutput) async throws -> CompanionJobOutput
+    func authorizeDesktop(_ request: CompanionIPCDesktopAuthorization) async throws -> CompanionDesktopAcknowledgement
     func invalidate() async
 }
 extension CompanionTransportClient: CompanionDeviceConnection {}
+extension CompanionDeviceConnection {
+    func authorizeDesktop(_ request: CompanionIPCDesktopAuthorization) async throws -> CompanionDesktopAcknowledgement {
+        throw CompanionClientError.remote("DESKTOP_AUTHORIZATION_UNAVAILABLE")
+    }
+}
 
 /// Application-owned, one serialized control connection per verified device.
 @Observable @MainActor

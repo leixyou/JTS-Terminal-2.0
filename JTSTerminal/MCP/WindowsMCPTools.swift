@@ -240,11 +240,20 @@ struct WindowsMCPToolResponse {
             )
         }
         guard let proof = structuredContent["transportProof"] as? [String: Any],
-              proof["channel"] as? String == "companion-dvc" else {
+              let channel = proof["channel"] as? String,
+              ["companion-dvc", "companion-desktop-relay"].contains(channel) else {
             throw WindowsMCPToolError(
                 code: .runtimeFailure,
                 message: "Windows Companion response did not prove execution over companion-dvc."
             )
+        }
+        if channel == "companion-desktop-relay" {
+            guard Self.uuid(proof["desktopGrantId"]) != nil, Self.uuid(proof["pairingId"]) != nil,
+                  Self.uuid(structuredContent["sessionGeneration"]) != nil,
+                  Self.exactInt(structuredContent["windowsSessionId"]) != nil,
+                  structuredContent["requiresRDP"] as? Bool == false else {
+                throw WindowsMCPToolError(code: .runtimeFailure, message: "Native Companion provenance is incomplete.")
+            }
         }
     }
 
@@ -1112,7 +1121,7 @@ enum WindowsMCPToolRegistry {
             ),
             tool(
                 .openDesktop,
-                "Open one visible native RDP desktop session for an MCP-enabled Windows target. Uses its bound independent Companion relay route when configured, otherwise the saved direct endpoint. GUI launch, credential access, old-session cleanup, and XPC connect share one monotonic deadline; repeated requests can join one client-scoped idempotent operation.",
+                "Open a visible Windows desktop using the target's saved RDP or Companion route. Companion desktop uses the encrypted relay and does not require Windows RDP. Returns the actual transport, Windows session, execution identity and available capabilities. Existing RDP profiles retain their route.",
                 properties: commonProperties.merging([
                     "deadlineMs": integerSchema(
                         "Total desktop-open budget in milliseconds. Defaults to 10,000.",
@@ -1173,7 +1182,9 @@ enum WindowsMCPToolRegistry {
                 .desktopAction,
                 "Perform a semantic UI Automation action or a frame-bound raw keyboard/mouse action. Coordinate actions require expectedFrameId and raw remote framebuffer coordinates.",
                 properties: commonProperties.merging([
-                    "action": stringEnumSchema(DesktopActionKind.allCases.map(\.rawValue), "Desktop action kind."),
+                    "action": stringEnumSchema(DesktopActionKind.allCases.map(\.rawValue) + ["fillCredential"], "Desktop action kind. fillCredential is available only through the native Companion desktop."),
+                    "credentialRef": stringSchema("Target-bound encrypted-vault credential reference returned in desktop status; never a password."),
+                    "purpose": stringEnumSchema(["login", "elevation"], "Purpose of a native secure-desktop credential fill."),
                     "idempotencyKey": stringSchema(
                         "Optional caller-generated key for semantic Windows Companion actions only. Raw keyboard and mouse actions reject it because they are not replay-deduplicated.",
                         minimumLength: 1,
@@ -1194,7 +1205,7 @@ enum WindowsMCPToolRegistry {
             ),
             tool(
                 .windowsExec,
-                "Execute bounded PowerShell through a paired Windows Companion on an already-open, connected RDP desktop. This tool never opens an RDP connection itself. Elevated execution additionally requires the MCP Elevation grant, an idempotency key, explicit data scopes, visible Windows consent, and UAC approval; the action-bound lease is released immediately after execution. Never falls back to OCR or desktop typing.",
+                "Execute bounded PowerShell directly through Companion in the current user of an open desktop. Returns the execution identity. Companion desktop uses a separate API channel from video; RDP uses DVC. Elevated execution requires the existing elevation grant and a supported action-bound lease. Requests are never converted to terminal keystrokes.",
                 properties: commonProperties.merging([
                     "command": stringSchema("PowerShell script to execute."),
                     "rootId": stringSchema("Configured Companion file-root identifier used to constrain the working directory."),
@@ -1220,7 +1231,7 @@ enum WindowsMCPToolRegistry {
             ),
             tool(
                 .windowsFiles,
-                "Perform a bounded Windows file operation through a paired Companion on an already-open, connected RDP desktop. This tool never opens an RDP connection itself. Paths remain subject to Companion root and traversal policy.",
+                "Perform a bounded file operation directly through Companion in the current user of an open desktop. Returns the execution identity. Paths remain subject to existing Companion root and traversal policy.",
                 properties: commonProperties.merging([
                     "operation": stringEnumSchema(RemoteFileOperation.allCases.map(\.rawValue), "File operation."),
                     "rootId": stringSchema("Configured Companion file-root identifier."),
@@ -1235,7 +1246,7 @@ enum WindowsMCPToolRegistry {
             ),
             tool(
                 .windowsTask,
-                "Run a whitelisted structured worker operation through a paired Companion on an already-open, connected RDP desktop. This tool never opens an RDP connection itself. Success includes ok=true, state, transportProof.channel=companion-dvc, jobId when applicable, and bundleBase64/bundleSha256 for collect. This interface does not accept arbitrary task shell fields.",
+                "Run a whitelisted structured worker operation directly through Companion in the current user of an open desktop. Returns the actual transport and execution identity, jobId when applicable, and bundleBase64/bundleSha256 for collect. Arbitrary task shell fields are rejected.",
                 properties: commonProperties.merging([
                     "action": stringEnumSchema(RemoteTaskAction.allCases.map(\.rawValue), "Worker action."),
                     "jobId": stringSchema("Job identifier for submit, status, cancel, or collect."),
@@ -1245,7 +1256,7 @@ enum WindowsMCPToolRegistry {
             ),
             tool(
                 .closeDesktop,
-                "Close an RDP desktop session and cancel its in-flight AI desktop operations. Persistent client access remains until explicitly revoked.",
+                "Close the target's desktop and cancel its in-flight AI operations. Persistent device access remains until explicitly revoked.",
                 properties: commonProperties,
                 required: ["targetId", "sessionId"]
             ),

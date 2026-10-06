@@ -4,7 +4,7 @@ import Foundation
 /// current lane grant before any file protocol or RDP bytes are exposed.
 enum CompanionLaneAuthorization {
     static func authorize(channel: any CompanionSecureChannel, grantID: UUID) async throws {
-        guard channel.binding.lane == .file || channel.binding.lane == .rdp else {
+        guard [.file, .rdp, .desktop].contains(channel.binding.lane) else {
             throw CompanionTransportError.unsupportedLane
         }
         let id = UUID().uuidString.lowercased()

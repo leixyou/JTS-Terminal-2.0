@@ -100,6 +100,8 @@ extension RemoteConnectionType {
             return "SSH"
         case .localShell:
             return language.localized("Local Shell", "本地 Shell")
+        case .macDesktop:
+            return AppReleasePolicy.includesNativeRDP ? language.localized("Mac Desktop", "Mac 桌面") : language.localized("Unsupported", "不支持")
         case .rdp:
             #if ENABLE_RDP_2
             return "RDP"
@@ -118,7 +120,7 @@ extension RemoteSession {
             return "\(username)@\(host):\(port)"
         case .localShell:
             return language.localized("Local shell", "本地 Shell")
-        case .rdp:
+        case .rdp, .macDesktop:
             guard !host.isEmpty else { return language.localized("Host not configured", "未配置主机") }
             return "\(host):\(port)"
         }

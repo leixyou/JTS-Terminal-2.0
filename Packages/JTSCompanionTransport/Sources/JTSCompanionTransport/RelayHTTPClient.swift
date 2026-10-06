@@ -65,6 +65,13 @@ public actor RelayHTTPClient {
         return value
     }
 
+    public func capabilities() async throws -> RelayCapabilities {
+        let value: RelayCapabilities = try await request(path: "/v1/capabilities", body: nil,
+            requiredKeys: ["protocolVersion", "extensions", "lanes", "desktopMaximumBufferedBytes", "desktopBytesPerSecond"])
+        try value.validate()
+        return value
+    }
+
     /// Presence is not node admission. Operators admit keys outside this client API.
     public func presence() async throws {
         struct Response: Decodable { let deviceId: String }
@@ -116,7 +123,7 @@ public actor RelayHTTPClient {
         return try await request(path: "/v1/\(operation.rawValue)", body: RelayJSON.encode(proof))
     }
 
-    private func request<T: Decodable>(path: String, body: Data?) async throws -> T {
+    private func request<T: Decodable>(path: String, body: Data?, requiredKeys: Set<String>? = nil) async throws -> T {
         var request = URLRequest(url: try endpoint.httpURL(path: path))
         request.httpMethod = body == nil ? "GET" : "POST"
         request.httpBody = body
@@ -133,7 +140,7 @@ public actor RelayHTTPClient {
             throw CompanionTransportError.remote(safe ? code : "request_failed")
         }
         do {
-            try StrictRelayJSON.validate(response.body)
+            try StrictRelayJSON.validate(response.body, requiredKeys: requiredKeys)
             return try JSONDecoder().decode(T.self, from: response.body)
         }
         catch { throw CompanionTransportError.invalidResponse }

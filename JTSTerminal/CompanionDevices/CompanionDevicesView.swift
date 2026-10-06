@@ -110,7 +110,11 @@ struct CompanionDevicesView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text(device.name).font(.title2)
-                    LabeledContent(t("Relay", "中继")) { Text(device.relayURL).textSelection(.enabled) }
+                    if device.revokedAt == nil {
+                        CompanionDeviceRelaySettings(device: device, model: model, language: language).id(device.id)
+                    } else {
+                        LabeledContent(t("Relay station", "中转站")) { Text(device.relayURL).textSelection(.enabled) }
+                    }
                     VStack(alignment: .leading, spacing: 6) {
                         Text(t("Windows identity fingerprint", "Windows 身份指纹")).font(.headline)
                         CompanionPublicValue(value: device.peerDeviceID, copyLabel: t("Copy fingerprint", "复制指纹"))

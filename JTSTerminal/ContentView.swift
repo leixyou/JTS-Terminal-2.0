@@ -490,6 +490,10 @@ struct ContentView: View {
                 selectedSessionID = nil
             }
             terminalWorkspaceStore.removeWorkspace(for: session.persistentModelID)
+            #if ENABLE_RDP_2
+            ApplicationWorkspaceRuntime.shared.macDesktops.remove(for: session.persistentModelID)
+            MacSystemScreenSharingStore.shared.remove(targetID: session.targetID)
+            #endif
             modelContext.delete(session)
         }
         reconcileSelectedSessionIfNeeded()
@@ -536,6 +540,10 @@ struct ContentView: View {
 
     private func openInteractive(for session: RemoteSession) {
         selectedSessionID = session.persistentModelID
+        if session.connectionType == .macDesktop {
+            selectedWorkspaceFeature = .desktop
+            return
+        }
         if session.connectionType == .rdp {
             selectedWorkspaceFeature = .desktop
             #if ENABLE_RDP_2
@@ -576,6 +584,10 @@ struct ContentView: View {
         }
 
         selectedSessionID = session.persistentModelID
+        if session.connectionType == .macDesktop {
+            selectedWorkspaceFeature = .desktop
+            return
+        }
         if session.connectionType == .rdp {
             selectedWorkspaceFeature = .desktop
             #if ENABLE_RDP_2
@@ -1665,6 +1677,8 @@ private struct SessionRow: View {
             return "server.rack"
         case .localShell:
             return "apple.terminal"
+        case .macDesktop:
+            return "desktopcomputer"
         case .rdp:
             return "desktopcomputer"
         }
@@ -1765,6 +1779,8 @@ enum WorkspaceFeature: String, CaseIterable, Identifiable {
             supportedFeatures = [.command, .files, .tunnels, .credentials, .profiles]
         case .localShell:
             supportedFeatures = [.command, .profiles]
+        case .macDesktop:
+            supportedFeatures = [.desktop, .profiles]
         case .rdp:
             supportedFeatures = [.desktop, .profiles]
         }
@@ -2448,7 +2464,11 @@ private struct RemoteWorkspace: View {
         VStack(alignment: .leading, spacing: feature == .desktop || feature == .command || feature == .files ? 0 : 14) {
             switch feature {
             case .desktop:
-                if session.connectionType == .rdp {
+                if session.connectionType == .macDesktop {
+                    #if ENABLE_RDP_2
+                    MacDesktopIntegratedPanel(session: session)
+                    #endif
+                } else if session.connectionType == .rdp {
                     #if ENABLE_RDP_2
                     RDPDesktopLauncher(target: session, openProperties: openServerProperties)
                     #else
@@ -2630,6 +2650,8 @@ private struct WorkspaceToolbar: View {
             return "server.rack"
         case .localShell:
             return "apple.terminal"
+        case .macDesktop:
+            return "desktopcomputer"
         case .rdp:
             return "desktopcomputer"
         }
@@ -2928,6 +2950,8 @@ private struct Header: View {
             return language.localized("SSH profile configured", "SSH 配置已完成")
         case .localShell:
             return language.localized("Local shell ready", "本地 Shell 已就绪")
+        case .macDesktop:
+            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
         case .rdp:
             #if ENABLE_RDP_2
             return language.localized("Windows RDP profile configured", "Windows RDP 配置已完成")
@@ -2995,6 +3019,8 @@ private struct ServerPropertiesDraft: Equatable {
                 && (1...65_535).contains(port)
         case .localShell:
             return true
+        case .macDesktop:
+            return !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (1...65_535).contains(port)
         case .rdp:
             let hasHost = !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             let hasUsername = !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -3017,6 +3043,8 @@ private struct ServerPropertiesDraft: Equatable {
             return "\(username)@\(host):\(port)"
         case .localShell:
             return language.localized("Local shell", "本地 Shell")
+        case .macDesktop:
+            return "\(host):\(port)"
         case .rdp:
             guard !host.isBlank else { return language.localized("Host not configured", "未配置主机") }
             let trimmedDomain = rdpDomain.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3031,6 +3059,8 @@ private struct ServerPropertiesDraft: Equatable {
             return "\(username.trimmingCharacters(in: .whitespacesAndNewlines))@\(host.trimmingCharacters(in: .whitespacesAndNewlines)):\(port)"
         case .localShell:
             return "local-shell"
+        case .macDesktop:
+            return "mac-desktop:\(host.trimmingCharacters(in: .whitespacesAndNewlines)):\(port)"
         case .rdp:
             let trimmedDomain = rdpDomain.trimmingCharacters(in: .whitespacesAndNewlines)
             let qualifiedUser = trimmedDomain.isEmpty ? username : "\(trimmedDomain)\\\(username)"
@@ -3039,6 +3069,7 @@ private struct ServerPropertiesDraft: Equatable {
     }
 
     func apply(to session: RemoteSession) {
+        let previousBinding = session.mcpGrantTargetBinding
         session.name = name
         session.host = host
         session.username = username
@@ -3066,7 +3097,7 @@ private struct ServerPropertiesDraft: Equatable {
         let previousMCPEnabled = session.mcpEnabled
         let previousMCPAlwaysAllowTerminalControl = session.mcpAlwaysAllowTerminalControl
         let previousMCPAlias = session.mcpAlias
-        session.mcpEnabled = mcpEnabled
+        session.mcpEnabled = connectionType == .macDesktop ? false : mcpEnabled
         session.mcpAlwaysAllowTerminalControl = connectionType != .rdp && session.mcpEnabled && mcpAlwaysAllowTerminalControl
         session.mcpAlias = mcpAlias
         if previousMCPEnabled != session.mcpEnabled ||
@@ -3076,6 +3107,12 @@ private struct ServerPropertiesDraft: Equatable {
             previousMCPAlias != session.mcpAlias {
             session.mcpUpdatedAt = Date()
         }
+        #if ENABLE_RDP_2
+        if previousBinding != session.mcpGrantTargetBinding {
+            ApplicationWorkspaceRuntime.shared.macDesktops.remove(for: session.persistentModelID)
+            MacSystemScreenSharingStore.shared.remove(targetID: session.targetID)
+        }
+        #endif
         session.updatedAt = Date()
     }
 }
@@ -3249,6 +3286,8 @@ private struct SessionEditor: View {
                 sshFields
             case .localShell:
                 localShellFields
+            case .macDesktop:
+                macDesktopFields
             case .rdp:
                 rdpFields
             }
@@ -3267,6 +3306,17 @@ private struct SessionEditor: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
+    private var macDesktopFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            LabeledContent(language.localized("Companion port", "Companion 端口")) {
+                TextField("49871", value: $draft.port, format: .number.grouping(.never))
+                    .textFieldStyle(.roundedBorder).frame(width: 110)
+            }
+            Text(language.localized("Install JTS Mac Companion on the host, then authorize and pair in the Desktop workspace. System Screen Sharing uses its own macOS login.", "在被控 Mac 安装 JTS Mac Companion，然后在桌面工作区完成授权和配对。系统屏幕共享使用 macOS 自身的登录。"))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     private var connectionTypeField: some View {
         LabeledContent(language.localized("Connection type", "连接类型")) {
             Picker(language.localized("Connection type", "连接类型"), selection: $draft.connectionType) {
@@ -3277,7 +3327,7 @@ private struct SessionEditor: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(maxWidth: 280, alignment: .leading)
+            .frame(maxWidth: 400, alignment: .leading)
             .accessibilityIdentifier("session-connection-type-picker")
         }
     }
@@ -3777,6 +3827,8 @@ private struct SessionEditor: View {
             return language.localized("Enable MCP for this SSH server", "为这台 SSH 服务器启用 MCP")
         case .localShell:
             return language.localized("Enable MCP for this Local Shell", "为这个本地 Shell 启用 MCP")
+        case .macDesktop:
+            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
         case .rdp:
             #if ENABLE_RDP_2
             return language.localized("Enable MCP for this Windows target", "为这个 Windows 目标启用 MCP")
@@ -3798,6 +3850,8 @@ private struct SessionEditor: View {
                 "Always allow MCP Control for all Local Shell sessions",
                 "长期允许 MCP 控制此配置的所有本地 Shell 会话"
             )
+        case .macDesktop:
+            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
         case .rdp:
             return language.localized(
                 "Allow registered AI clients to request persistent control",
@@ -3827,6 +3881,8 @@ private struct SessionEditor: View {
             return "When enabled, every running SSH terminal pane for this server is authorized for jts_terminal_exec without using the per-pane temporary switch. If a pane is a root shell, MCP commands run as root."
         case .localShell:
             return "When enabled, every running Local Shell pane for this profile is authorized for jts_terminal_exec without using the per-pane temporary switch. If you switch a pane to root, MCP commands run as root in that same shell."
+        case .macDesktop:
+            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
         case .rdp:
             #if ENABLE_RDP_2
             return "When enabled, registered AI clients can use this Windows target's persistent control scope directly. Disconnect, reconnect, and manual takeover cancel in-flight work. Revoke a client from AI Access Management."
@@ -3842,6 +3898,8 @@ private struct SessionEditor: View {
             return "开启后，这台服务器的每个正在运行的 SSH 终端窗格都会授权给 jts_terminal_exec，无需再打开单个窗格的临时开关。如果某个窗格是 root shell，MCP 命令也会以 root 执行。"
         case .localShell:
             return "开启后，这个配置的每个正在运行的本地 Shell 窗格都会授权给 jts_terminal_exec，无需再打开单个窗格的临时开关。如果你把某个窗格切到 root，MCP 命令会在同一个 root shell 里执行。"
+        case .macDesktop:
+            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
         case .rdp:
             #if ENABLE_RDP_2
             return "开启后，已注册的 AI 客户端可以直接使用这个 Windows 目标的长期控制范围。断开、重连和人工停止只会取消正在执行的任务；需要时再从“AI 访问管理”撤销某个客户端。"
@@ -4894,6 +4952,8 @@ private struct ConnectionActions: View {
             return language.localized("Connection not tested yet.", "尚未测试连接。")
         case .localShell:
             return language.localized("Local shell profile is ready.", "本地 Shell 配置已就绪。")
+        case .macDesktop:
+            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
         case .rdp:
             #if ENABLE_RDP_2
             return language.localized("RDP profile is ready to open in the Desktop workspace.", "RDP 配置已就绪，可在桌面工作区中打开。")
@@ -8051,6 +8111,8 @@ private struct TerminalPaneView: View {
                     "MCP Control is always allowed for every running Local Shell pane of this profile in Server Properties.",
                     "已在服务器属性中长期允许 MCP 控制这个配置的每个运行中本地 Shell 窗格。"
                 )
+            case .macDesktop:
+                return language.localized("MCP control is unavailable for this Mac profile.", "此 Mac 配置尚未开放 MCP 控制。")
             case .rdp:
                 #if ENABLE_RDP_2
                 return language.localized(
@@ -8084,6 +8146,8 @@ private struct TerminalPaneView: View {
                 "Syncs with Server Properties > AI / MCP Access > Enable MCP for this Local Shell.",
                 "同步服务器属性 > AI / MCP 访问 > 为这个本地 Shell 启用 MCP。"
             )
+        case .macDesktop:
+            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
         case .rdp:
             #if ENABLE_RDP_2
             return language.localized(

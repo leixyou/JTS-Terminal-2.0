@@ -1625,7 +1625,19 @@ final class TerminalMCPBridgeServer: ObservableObject {
             let arguments: [String: Any] = ["targetId": target.targetID.uuidString.lowercased(), "action": "status",
                 "_jtsClientID": clientID, "_jtsClientDisplayIdentity": params["_jtsClientDisplayIdentity"] as? String ?? clientID]
             do {
-                routes.append(try await CompanionDeviceMCPHandler.shared.handle(tool: .status, target: target, arguments: arguments))
+                var route = try await CompanionDeviceMCPHandler.shared.handle(tool: .status, target: target, arguments: arguments)
+                if let saved = try await CompanionDesktopRuntime.shared.route(for: target) {
+                    var desktop: [String: Any] = ["route": saved.effectiveDesktopRoute.rawValue,
+                        "transport": saved.effectiveDesktopRoute == .companion ? "companion-desktop-relay" : "rdp",
+                        "requiresRDP": saved.effectiveDesktopRoute != .companion,
+                        "state": "disconnected", "ready": false]
+                    if let active = CompanionDesktopRuntime.shared.sessions[target.targetID] {
+                        desktop.merge(CompanionDesktopRuntime.shared.metadata(active)) { _, new in new }
+                        desktop["ready"] = active.image != nil && active.status != "unavailable"
+                    }
+                    route["desktop"] = desktop
+                }
+                routes.append(route)
             } catch {
                 routes.append(["targetId": target.targetID.uuidString.lowercased(), "ready": false, "state": "unavailable"])
             }

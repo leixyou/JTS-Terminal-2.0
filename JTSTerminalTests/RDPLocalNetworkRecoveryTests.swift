@@ -4,6 +4,7 @@ import Foundation
 import Testing
 @testable import JTSTerminal
 
+@Suite(.serialized)
 @MainActor
 struct RDPLocalNetworkRecoveryTests {
     @Test func freeRDPTransportFailuresRequestTargetedPathDiagnosis() {
@@ -495,9 +496,10 @@ struct RDPLocalNetworkRecoveryTests {
             connectionType: .rdp
         )
         let gate = LocalNetworkOpenGate()
+        defer { gate.release() }
         let store = RDPDesktopRuntimeStore(
             openOperationExecutorForTesting: { target, _, _ in
-                await gate.execute(target: target)
+                try await gate.execute(target: target)
             },
             localNetworkDiagnoserForTesting: { _, _ in .inconclusive }
         )
@@ -515,7 +517,7 @@ struct RDPLocalNetworkRecoveryTests {
 
         let connect = try #require(store.presentation(for: target).connect)
         connect()
-        await gate.waitUntilStarted()
+        try await gate.waitUntilStarted()
         #expect(
             store.pendingLocalNetworkDiagnosticModeForTesting(
                 targetID: target.targetID
@@ -907,20 +909,28 @@ private final class DiagnosticCompletionRecorder: @unchecked Sendable {
 
 @MainActor
 private final class LocalNetworkOpenGate {
-    private var releaseContinuation: CheckedContinuation<Void, Never>?
-    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseContinuation: CheckedContinuation<Void, Error>?
     private var started = false
+    private var released = false
 
-    func execute(target: RemoteSession) async -> RDPDesktopSessionState {
-        await withCheckedContinuation { continuation in
-            releaseContinuation = continuation
-            started = true
-            let waiters = startWaiters
-            startWaiters.removeAll(keepingCapacity: false)
-            for waiter in waiters {
-                waiter.resume()
+    func execute(target: RemoteSession) async throws -> RDPDesktopSessionState {
+        try Task.checkCancellation()
+        try #require(!started, "Joined opens must not start the injected executor twice")
+        started = true
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if released {
+                    continuation.resume()
+                } else {
+                    releaseContinuation = continuation
+                }
             }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.cancel() }
         }
+        try Task.checkCancellation()
         return RDPDesktopSessionState(
             sessionID: UUID(),
             targetID: target.targetID,
@@ -940,19 +950,31 @@ private final class LocalNetworkOpenGate {
         )
     }
 
-    func waitUntilStarted() async {
-        if started {
-            return
+    func waitUntilStarted(timeout: Duration = .seconds(30)) async throws {
+        try Task.checkCancellation()
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        // The real open may expire before the injected executor ever runs.
+        // Bound fixture readiness independently instead of stranding XCTest.
+        while !started, clock.now < deadline {
+            try Task.checkCancellation()
+            try await Task.sleep(for: .milliseconds(5))
         }
-        await withCheckedContinuation { continuation in
-            startWaiters.append(continuation)
-        }
+        try Task.checkCancellation()
+        try #require(started, "The injected desktop open executor did not start before the fixture deadline")
     }
 
     func release() {
+        released = true
         let continuation = releaseContinuation
         releaseContinuation = nil
         continuation?.resume()
+    }
+
+    private func cancel() {
+        let continuation = releaseContinuation
+        releaseContinuation = nil
+        continuation?.resume(throwing: CancellationError())
     }
 }
 #endif

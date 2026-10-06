@@ -9,24 +9,34 @@ public struct PinnedTLSChannelFactory: CompanionSecureChannelFactory {
                              peer: PairedCompanionDevice,
                              binding: CompanionLaneBinding) async throws -> any CompanionSecureChannel {
         try await withTaskCancellationHandler {
-            try await authenticateAndBind(carrier: carrier, identity: identity, peer: peer, binding: binding)
+            try await authenticateAndBind(carrier: carrier, identity: identity, peer: peer, binding: binding, server: false)
         } onCancel: {
             // Do not rely on a carrier implementation propagating task cancellation to socket I/O.
             Task { await carrier.close() }
         }
     }
 
+    /// Companion-side authentication over the same opaque relay carrier. No relay metadata supplies peer trust.
+    public func accept(carrier: any RelayByteCarrier, identity: RelayIdentity,
+                       peer: PairedCompanionDevice,
+                       binding: CompanionLaneBinding) async throws -> any CompanionSecureChannel {
+        try await withTaskCancellationHandler {
+            try await authenticateAndBind(carrier: carrier, identity: identity, peer: peer, binding: binding, server: true)
+        } onCancel: { Task { await carrier.close() } }
+    }
+
     private func authenticateAndBind(carrier: any RelayByteCarrier, identity: RelayIdentity,
                                      peer: PairedCompanionDevice,
-                                     binding: CompanionLaneBinding) async throws -> any CompanionSecureChannel {
-        guard binding.controllerDeviceId == identity.deviceID, binding.companionDeviceId == peer.deviceID,
+                                     binding: CompanionLaneBinding, server: Bool) async throws -> any CompanionSecureChannel {
+        guard (server ? binding.companionDeviceId : binding.controllerDeviceId) == identity.deviceID,
+              (server ? binding.controllerDeviceId : binding.companionDeviceId) == peer.deviceID,
               peer.allowedLanes.contains(binding.lane) else {
             await carrier.close()
             throw CompanionTransportError.unauthorizedDevice
         }
         let channel: PinnedTLSChannel
         do {
-            channel = try PinnedTLSChannel(carrier: carrier, identity: identity, peer: peer, binding: binding)
+            channel = try PinnedTLSChannel(carrier: carrier, identity: identity, peer: peer, binding: binding, server: server)
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask { try await channel.establish() }
                 group.addTask {

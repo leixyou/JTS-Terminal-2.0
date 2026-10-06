@@ -126,7 +126,7 @@ nonisolated struct RemoteSessionProfile: Codable, Equatable, Identifiable {
             : nil
         let decodedMCPEnabled = try container.decodeIfPresent(Bool.self, forKey: .mcpEnabled) ?? false
         let decodedPersistentMCPControl = try container.decodeIfPresent(Bool.self, forKey: .mcpAlwaysAllowTerminalControl) ?? false
-        mcpEnabled = resolvedConnectionType.isSupported && decodedMCPEnabled
+        mcpEnabled = resolvedConnectionType.isSupported && connectionType != .macDesktop && decodedMCPEnabled
         mcpAlwaysAllowTerminalControl = mcpEnabled &&
             connectionType != .rdp &&
             decodedPersistentMCPControl
@@ -167,7 +167,7 @@ nonisolated struct RemoteSessionProfile: Codable, Equatable, Identifiable {
             enableX11Forwarding: enableX11Forwarding,
             remotePath: remotePath
         )
-        session.mcpEnabled = mcpEnabled
+        session.mcpEnabled = connectionType == .macDesktop ? false : mcpEnabled
         session.mcpAlwaysAllowTerminalControl = session.mcpEnabled &&
             connectionType != .rdp &&
             mcpAlwaysAllowTerminalControl

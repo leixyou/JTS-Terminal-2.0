@@ -82,6 +82,7 @@ struct RDPDesktopMenuLabel: View {
 @MainActor
 final class ApplicationWorkspaceRuntime {
     static let shared = ApplicationWorkspaceRuntime()
+    let macDesktops = MacDesktopWorkspaceStore()
     let terminals = TerminalWorkspaceStore()
     let broadcasts = TerminalBroadcastCoordinator()
     let tunnels = SSHTunnelManagerStore()

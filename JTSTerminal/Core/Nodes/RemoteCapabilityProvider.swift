@@ -32,6 +32,8 @@ extension RemoteSession {
             capabilities = [.discovery, .commandExecution, .fileAccess]
         case .localShell:
             capabilities = [.discovery, .commandExecution]
+        case .macDesktop:
+            capabilities = []
         case .rdp:
             capabilities = mcpPermissionPolicy.maximumCapabilities
         }

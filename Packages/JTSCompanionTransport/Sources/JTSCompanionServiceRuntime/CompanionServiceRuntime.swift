@@ -170,6 +170,7 @@ public actor CompanionServiceRuntime {
 
     private func validateOperation(_ request: CompanionIPCRequest) throws {
         switch request.operation {
+        case .authorizeDesktop: _ = try CompanionIPCCodec.decodePayload(request.payload, as: CompanionIPCDesktopAuthorization.self)
         case .status: _ = try CompanionIPCCodec.decodePayload(request.payload, as: CompanionIPCGrant.self)
         case .submit: _ = try CompanionIPCCodec.decodePayload(request.payload, as: CompanionIPCSubmit.self)
         case .job, .cancel: _ = try CompanionIPCCodec.decodePayload(request.payload, as: CompanionIPCJob.self)

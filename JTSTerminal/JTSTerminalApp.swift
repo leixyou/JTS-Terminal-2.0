@@ -62,6 +62,12 @@ struct JTSTerminalApp: App {
         .modelContainer(sharedModelContainer)
         .defaultSize(width: 920, height: 640)
         .windowResizability(.contentMinSize)
+        Settings {
+            TabView {
+                RelayStationsSettingsView()
+                    .tabItem { Label(AppLanguage.stored.localized("Relay Stations", "中转站"), systemImage: "network") }
+            }
+        }
         #endif
     }
 }
@@ -269,6 +275,8 @@ final class JTSTerminalApplicationDelegate: NSObject, NSApplicationDelegate {
         #if ENABLE_RDP_2
         RDPDesktopWindowCoordinator.shared.closeAllWindows()
         CompanionDevicesModel.shared.disconnectAll()
+        ApplicationWorkspaceRuntime.shared.macDesktops.disconnectAll()
+        MacSystemScreenSharingStore.shared.disconnectAll()
         ApplicationWorkspaceRuntime.shared.bridge.stop()
         #endif
     }
@@ -355,6 +363,7 @@ private struct JTSTerminalCommands: Commands {
             Button(language.localized("Companion Devices…", "Companion 设备…")) {
                 openWindow(id: CompanionDevicesModel.windowID)
             }
+            SettingsLink { Text(language.localized("Relay Stations…", "中转站…")) }
             Divider()
             #endif
             Button(language.localized("Server Properties", "服务器属性")) {

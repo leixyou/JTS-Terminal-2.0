@@ -17,4 +17,10 @@ for jts_fixture in auth-v2 confirmation-v2 revocation-v2; do
     cmp "fixtures/$jts_fixture.json" "$jts_root/Packages/JTSCompanionTransport/Tests/JTSRelayEnrollmentTests/Fixtures/$jts_fixture.json"
 done
 cmp fixtures/confirmation-v2.json "$jts_root/Packages/JTSCompanionTransport/Tests/JTSCompanionDevicesTests/Fixtures/confirmation-v2.json"
+for jts_desktop_snapshot in 3.0.0-desktop.1 3.0.0-desktop.2; do
+    cd "$jts_root/Protocols/JTSRelay/$jts_desktop_snapshot"
+    if command -v sha256sum >/dev/null; then sha256sum --check SHA256SUMS; else shasum -a 256 --check SHA256SUMS; fi
+    cd desktop-v1
+    if command -v sha256sum >/dev/null; then sha256sum --check SHA256SUMS; else shasum -a 256 --check SHA256SUMS; fi
+done
 echo 'Relay protocol snapshot and Swift public fixture: PASS'

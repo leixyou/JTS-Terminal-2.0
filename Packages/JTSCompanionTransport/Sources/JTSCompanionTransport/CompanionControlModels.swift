@@ -20,7 +20,7 @@ enum ControlLimits {
     static let frame = 96 * 1024
     static let payload = 64 * 1024
     static let outputChunk = 32 * 1024
-    static let operations: Set<String> = ["device.status", "job.submit", "job.get", "job.cancel", "job.output"]
+    static let operations: Set<String> = ["device.status", "job.submit", "job.get", "job.cancel", "job.output", "desktop.authorize"]
     static func canonical(_ value: UUID) throws -> String {
         let result = value.uuidString.lowercased()
         guard result != "00000000-0000-0000-0000-000000000000" else { throw CompanionControlError.invalidRequest }

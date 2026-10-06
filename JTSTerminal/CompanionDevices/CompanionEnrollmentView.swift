@@ -24,7 +24,7 @@ struct CompanionEnrollmentView: View {
                    "将接入码粘贴到 Windows 上的 Companion。绑定会保留到主动撤销，与 RDP 登录无关。"))
                 .foregroundStyle(.secondary)
             Form {
-                TextField(t("HTTPS relay address", "HTTPS 中转地址"), text: $relay).textFieldStyle(.roundedBorder)
+                RelayStationPicker(origin: $relay, language: language)
                 Toggle(t("Windows 10 / Server 2019 compatibility", "Windows 10 / Server 2019 兼容模式"), isOn: $compatibility)
                 Picker(t("Windows profile", "Windows 连接配置"), selection: $targetID) {
                     Text(t("Device only", "仅添加设备")).tag(UUID?.none)

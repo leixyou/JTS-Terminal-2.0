@@ -37,7 +37,7 @@ extension RDPDesktopRuntimeStore {
             guard try await store.binding(targetID: binding.targetID, targetBinding: binding.targetBinding) == binding else {
                 throw CompanionTargetRouteError.changed
             }
-            _ = try await model.relayConfiguration(deviceID: binding.deviceID, grantID: grantID)
+            try await model.requireRelayConfiguration(deviceID: binding.deviceID, expected: relay)
             try requireRelayAttempt(active, attempt: attempt)
             var remaining = deadlineMilliseconds
             if let budget = deadlineMilliseconds {

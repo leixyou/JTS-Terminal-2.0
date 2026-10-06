@@ -152,9 +152,11 @@ final class CompanionEnrollmentModel {
                 _ = try await devices.mcpConnect(deviceID: deviceID, grantID: UUID(uuidString: bundle.grantID)!, authorize: authorize)
                 try authorize()
                 if let targetID = record.targetID, let targetBinding = record.targetBinding {
+                    let existing = try await bindings.binding(targetID: targetID, targetBinding: targetBinding)
                     try await bindings.bind(targetID: targetID, targetBinding: targetBinding, deviceID: deviceID,
                         grantID: UUID(uuidString: bundle.grantID)!, fileGrantID: UUID(uuidString: bundle.fileGrantID),
-                        rdpGrantID: UUID(uuidString: bundle.rdpGrantID), pairingID: UUID(uuidString: bundle.pairingID))
+                        rdpGrantID: UUID(uuidString: bundle.rdpGrantID), pairingID: UUID(uuidString: bundle.pairingID),
+                        desktopRoute: existing?.effectiveDesktopRoute ?? .companion)
                 }
                 record.state = "complete"; try await save(record)
             } catch {

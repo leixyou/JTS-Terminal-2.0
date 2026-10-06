@@ -5,7 +5,17 @@ import Foundation
 public enum StrictCompanionJSON {
     public static func validate(_ data: Data, requiredKeys: Set<String>? = nil,
                                 maximumBytes: Int = CompanionIPCLimits.frameBytes) throws {
-        guard maximumBytes > 0, maximumBytes <= CompanionIPCLimits.frameBytes,
+        try validate(data, requiredKeys: requiredKeys, maximumBytes: maximumBytes, upperBound: CompanionIPCLimits.frameBytes)
+    }
+
+    /// Desktop video is carried in its own lane, outside the small control/XPC
+    /// envelope. Retain the same duplicate/depth checks without widening IPC.
+    public static func validateDesktop(_ data: Data, requiredKeys: Set<String>) throws {
+        try validate(data, requiredKeys: requiredKeys, maximumBytes: 8 * 1024 * 1024, upperBound: 8 * 1024 * 1024)
+    }
+
+    private static func validate(_ data: Data, requiredKeys: Set<String>?, maximumBytes: Int, upperBound: Int) throws {
+        guard maximumBytes > 0, maximumBytes <= upperBound,
               !data.isEmpty, data.count <= maximumBytes, String(data: data, encoding: .utf8) != nil else {
             throw CompanionIPCError.invalidFrame
         }

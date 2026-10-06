@@ -3052,6 +3052,7 @@ final class RDPDesktopRuntimeStore: ObservableObject, DesktopProvider {
 
     func emergencyStop(targetID: UUID) async {
         invalidateAllAIAuthority(targetID: targetID)
+        await CompanionDesktopRuntime.shared.close(targetID: targetID)
         if let target = targetsByID[targetID],
            let binding = try? await CompanionTargetRouteStore.shared.binding(
                 targetID: targetID, targetBinding: target.mcpGrantTargetBinding) {

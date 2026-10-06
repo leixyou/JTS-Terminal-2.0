@@ -67,6 +67,34 @@ public actor CompanionDeviceRegistry {
         return stored.document.snapshot
     }
 
+    /// Commits one explicitly verified route change for an exact set of peers. Identity,
+    /// grants and revocation are unchanged; stale verification never overwrites new state.
+    public func updateRelay(devices expected: [CompanionSavedDevice], relayURL: String,
+                            replacingOrigin: String? = nil) async throws -> CompanionDeviceSnapshot {
+        try begin(); defer { busy = false }
+        guard var stored = try await load() else { throw CompanionDeviceError.notInitialized }
+        let origin = try CompanionDeviceCodec.origin(relayURL)
+        guard !expected.isEmpty, Set(expected.map(\.id)).count == expected.count else {
+            throw CompanionDeviceError.invalidInput
+        }
+        if let replacingOrigin {
+            let currentIDs = Set(stored.document.devices.filter { $0.revokedAt == nil && $0.relayURL == replacingOrigin }.map(\.id))
+            guard currentIDs == Set(expected.map(\.id)) else { throw CompanionDeviceError.storageConflict }
+        }
+        for device in expected {
+            guard device.revokedAt == nil,
+                  let index = stored.document.devices.firstIndex(where: { $0.id == device.id }),
+                  stored.document.devices[index].snapshot == device else { throw CompanionDeviceError.storageConflict }
+            let previous = stored.document.devices[index]
+            stored.document.devices[index] = StoredDevice(id: previous.id, name: previous.name,
+                relayURL: origin, peerDeviceID: previous.peerDeviceID, peerSPKI: previous.peerSPKI,
+                allowWindows10TLS12: previous.allowWindows10TLS12, confirmedAt: previous.confirmedAt,
+                revokedAt: previous.revokedAt)
+        }
+        try await replace(stored.document, expected: stored.raw)
+        return stored.document.snapshot
+    }
+
     public func openConfiguration(deviceID: UUID) async throws -> CompanionIPCOpen {
         try begin(); defer { busy = false }
         guard let stored = try await load() else { throw CompanionDeviceError.notInitialized }

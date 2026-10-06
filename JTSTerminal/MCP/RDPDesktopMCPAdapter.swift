@@ -350,6 +350,9 @@ extension RDPDesktopRuntimeStore {
         target: RemoteSession,
         arguments: [String: Any]
     ) async throws -> WindowsMCPToolResponse {
+        if let binding = try await CompanionDesktopRuntime.shared.route(for: target), binding.effectiveDesktopRoute == .companion {
+            return try await CompanionDesktopRuntime.shared.handleMCP(tool: tool, target: target, arguments: arguments)
+        }
         register(target: target)
         let startedAt = Date()
         let clientID = (arguments["_jtsClientID"] as? String) ?? "unidentified-mcp-client"

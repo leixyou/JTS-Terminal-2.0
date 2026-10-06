@@ -175,7 +175,7 @@ final class TerminalWorkspaceState: ObservableObject {
                 return .ssh
             case .localShell:
                 return .localShell
-            case .rdp:
+            case .rdp, .macDesktop:
                 return nil
             }
         }

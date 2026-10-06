@@ -21,7 +21,10 @@ struct PinnedCompanionLaneRuntimeSession: CompanionLaneRuntimeSession {
     init(_ input: CompanionIPCLaneOpen) throws {
         try input.validate()
         let identity = RelayIdentity(privateKey: try P256.Signing.PrivateKey(rawRepresentation: input.privateKey))
-        lane = input.lane == .rdp ? .rdp : .file
+        guard let selected = RelayLane(rawValue: input.lane.rawValue), selected != .control else {
+            throw CompanionTransportError.unsupportedLane
+        }
+        lane = selected
         peer = try PairedCompanionDevice(publicKeySPKI: input.peerSPKI, allowedLanes: [lane],
                                         allowWindows10TLS12: input.allowWindows10TLS12)
         guard peer.deviceID != identity.deviceID, let url = URL(string: input.relayURL) else {

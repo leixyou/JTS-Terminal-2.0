@@ -5,6 +5,56 @@ import Testing
 @testable import JTSTerminal
 
 @Suite struct CompanionTargetRouteTests {
+    @Test func pendingDesktopProofSurvivesRestartAndOnlyExplicitRejectionDiscardsIt() async throws {
+        let persistence = RouteTestPersistence(), routes = CompanionTargetRouteStore(persistence: persistence)
+        let target = UUID(), fingerprint = String(repeating: "f", count: 64)
+        try await routes.bind(targetID: target, targetBinding: fingerprint, deviceID: UUID(),
+            grantID: UUID(), pairingID: UUID(), desktopRoute: .companion)
+        let initial = try #require(await routes.binding(targetID: target, targetBinding: fingerprint))
+        let now = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970) - 300)
+        let prepared = try await routes.prepareDesktopAuthorization(expected: initial, now: now)
+        let reopened = CompanionTargetRouteStore(persistence: persistence)
+        let restored = try #require(await reopened.binding(targetID: target, targetBinding: fingerprint))
+        #expect(restored == prepared)
+        #expect(try await reopened.prepareDesktopAuthorization(expected: restored) == prepared)
+        let rejected = try await reopened.discardRejectedDesktopAuthorization(expected: restored)
+        #expect(rejected.pendingDesktopAuthorization == nil)
+        let replacement = try await reopened.prepareDesktopAuthorization(expected: rejected)
+        #expect(replacement.pendingDesktopAuthorization?.grantID != prepared.pendingDesktopAuthorization?.grantID)
+        await #expect(throws: CompanionTargetRouteError.changed) {
+            try await reopened.saveDesktopAuthorization(expected: prepared,
+                grantID: try #require(prepared.pendingDesktopAuthorization).grantID,
+                expiresAt: try #require(prepared.pendingDesktopAuthorization).expiresAt)
+        }
+    }
+    @Test func nativeDesktopChoiceAndGrantAreIndependentOfLegacyRDP() async throws {
+        let persistence = RouteTestPersistence(), routes = CompanionTargetRouteStore(persistence: persistence)
+        let target = UUID(), device = UUID(), control = UUID(), pairing = UUID(), rdp = UUID()
+        let fingerprint = String(repeating: "e", count: 64)
+        try await routes.bind(targetID: target, targetBinding: fingerprint, deviceID: device,
+            grantID: control, rdpGrantID: rdp, pairingID: pairing)
+        let old = try #require(await routes.binding(targetID: target, targetBinding: fingerprint))
+        #expect(old.effectiveDesktopRoute == .rdp && old.desktopGrantID == nil)
+        await #expect(throws: CompanionTargetRouteError.changed) {
+            try await routes.saveDesktopAuthorization(expected: old, grantID: UUID(), expiresAt: Date().addingTimeInterval(60))
+        }
+        try await routes.chooseDesktopRoute(expected: old, preference: .companion)
+        let selected = try #require(await routes.binding(targetID: target, targetBinding: fingerprint))
+        await #expect(throws: CompanionTargetRouteError.invalid) {
+            try await routes.saveDesktopAuthorization(expected: selected, grantID: rdp, expiresAt: Date().addingTimeInterval(60))
+        }
+        let desktop = UUID()
+        try await routes.saveDesktopAuthorization(expected: selected, grantID: desktop, expiresAt: Date().addingTimeInterval(60))
+        let reopened = CompanionTargetRouteStore(persistence: persistence)
+        let native = try #require(await reopened.binding(targetID: target, targetBinding: fingerprint))
+        #expect(native.desktopGrantID == desktop && native.rdpGrantID == rdp)
+        #expect(native.effectiveDesktopRoute == .companion)
+        try await reopened.bind(targetID: target, targetBinding: fingerprint, deviceID: device, grantID: control)
+        #expect(try await reopened.binding(targetID: target, targetBinding: fingerprint) == native)
+        await #expect(throws: CompanionTargetRouteError.changed) {
+            try await reopened.saveDesktopAuthorization(expected: selected, grantID: UUID(), expiresAt: Date().addingTimeInterval(60))
+        }
+    }
     @Test func bindingSurvivesReloadButCannotFollowAChangedProfile() async throws {
         let persistence = RouteTestPersistence()
         let first = CompanionTargetRouteStore(persistence: persistence)

@@ -4,7 +4,7 @@ import XCTest
 
 final class LaneAuthorizationTests: XCTestCase {
     func testEachLaneChecksItsGrantWithoutConsumingFollowingStreamBytes() async throws {
-        for lane in [RelayLane.file, .rdp] {
+        for lane in [RelayLane.file, .rdp, .desktop] {
             let channel = try LaneOpeningChannel(.valid, lane: lane), grant = UUID()
             try await CompanionLaneAuthorization.authorize(channel: channel, grantID: grant)
             let receivedOperation = await channel.operation, receivedGrant = await channel.grant

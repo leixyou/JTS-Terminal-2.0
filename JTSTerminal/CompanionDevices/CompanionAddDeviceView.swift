@@ -31,7 +31,7 @@ struct CompanionAddDeviceView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 TextField(t("Device name", "设备名称"), text: $name)
-                TextField(t("Relay HTTPS address", "中继 HTTPS 地址"), text: $relay, prompt: Text("https://relay.example.com"))
+                RelayStationPicker(origin: $relay, language: language)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(t("Windows public key (SPKI Base64)", "Windows 公钥（SPKI Base64）"))
                     TextEditor(text: $publicKey).font(.body.monospaced()).frame(minHeight: 64, maxHeight: 96)
@@ -75,6 +75,7 @@ struct CompanionAddDeviceView: View {
                       let json = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
                       let bundle = try? CompanionPublicEnrollment(json) else { return }
                 name = bundle.name; relay = bundle.relayURL
+                Task { _ = await RelayStationsModel.shared.include(origin: bundle.relayURL) }
                 publicKey = bundle.peerSPKI.base64EncodedString(); compatibility = bundle.compatibility
             }
     }

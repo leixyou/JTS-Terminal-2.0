@@ -307,6 +307,7 @@ private final class ControlledTrustedReopenConnector {
     }
 }
 
+@Suite(.serialized)
 @MainActor
 struct RemoteDesktopCoreTests {
     @Test func rdpWorkspaceIdleCopyReportsReadyInsteadOfRuntimeFailure() {
@@ -5587,8 +5588,13 @@ struct RemoteDesktopCoreTests {
             let description = try #require(
                 companionTool["description"] as? String
             )
-            #expect(description.contains("already-open, connected RDP desktop"))
-            #expect(description.contains("never opens an RDP connection itself"))
+            #expect(description.contains("directly through Companion"))
+            #expect(description.contains("Companion"))
+            #expect(description.contains("current user of an open desktop"))
+            if toolName == .windowsExec {
+                #expect(description.contains("separate API channel from video; RDP uses DVC"))
+                #expect(description.contains("never converted to terminal keystrokes"))
+            }
             if toolName == .windowsTask {
                 let properties = try #require(
                     companionSchema["properties"] as? [String: Any]

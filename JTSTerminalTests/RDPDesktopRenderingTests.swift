@@ -65,7 +65,10 @@ struct RDPDesktopRenderingTests {
         #expect(sent.isEmpty)
         schedule(CGSize(width: 1_100, height: 700))
         schedule(CGSize(width: 1_200, height: 800))
-        try await Task.sleep(for: .milliseconds(60))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while sent.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
         #expect(sent == [CGSize(width: 1_200, height: 800)])
     }
 

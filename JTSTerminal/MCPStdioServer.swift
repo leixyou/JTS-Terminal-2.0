@@ -551,6 +551,16 @@ final class MCPStdioServer {
                 do {
                     let routes = try terminalBridgeClient.discoverDeviceRoutes(clientID: mcpClientID, displayIdentity: mcpClientDisplayIdentity)
                     payload["independentRoutes"] = routes
+                    if var targets = payload["targets"] as? [[String: Any]] {
+                        for index in targets.indices {
+                            if let route = routes.first(where: { $0["targetId"] as? String == targets[index]["targetId"] as? String }),
+                               let desktop = route["desktop"] as? [String: Any] {
+                                var runtime = targets[index]["runtime"] as? [String: Any] ?? [:]
+                                runtime["desktop"] = desktop; targets[index]["runtime"] = runtime
+                            }
+                        }
+                        payload["targets"] = targets
+                    }
                 } catch {
                     payload["independentRoutes"] = []
                     payload["independentRouteDiscovery"] = "GUI bridge unavailable; jts_device_status can start it."
@@ -701,6 +711,8 @@ final class MCPStdioServer {
                 "key",
                 "keys",
                 "text",
+                "credentialRef",
+                "purpose",
             ]
             guard Set(arguments.keys).isSubset(of: allowedKeys) else {
                 throw WindowsMCPToolError(
@@ -708,7 +720,11 @@ final class MCPStdioServer {
                     message: "jts_desktop_action contains unsupported arguments."
                 )
             }
-            _ = try WindowsMCPDesktopActionRequestParser.parse(arguments)
+            if arguments["action"] as? String == "fillCredential" {
+                try WindowsMCPCredentialFillRequest.validate(arguments)
+            } else {
+                _ = try WindowsMCPDesktopActionRequestParser.parse(arguments)
+            }
         }
     }
 
@@ -1445,7 +1461,7 @@ final class MCPStdioServer {
                     "terminal_exec",
                     "terminal_read"
                 ]
-            case .rdp:
+            case .rdp, .macDesktop:
                 capabilities = []
             }
             if session.mcpAlwaysAllowTerminalControl {
