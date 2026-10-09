@@ -65,5 +65,23 @@ Reviewers cannot reach a private LAN. Provide in the review notes:
 - macOS: choose a private key with **Browse** in Server Properties, quit and
   relaunch, then connect, open Files and run an MCP command with that profile.
   Keys typed as a path without Browse cannot be read inside the App Sandbox.
+- ssh-agent: run `JTS_PROBE_ALLOW_SYSTEM_CHANGES=1 scripts/sandbox_probes/run_ssh_agent_probe.sh`
+  on the oldest supported macOS (26.4). It signs a probe with the app's
+  entitlements and performs an agent-only ssh login from inside the sandbox.
+  Measured on hosted runners on 2026-10-09:
+
+  | Agent socket | macOS 26.6.2 | macOS 15 |
+  | --- | --- | --- |
+  | launchd agent (`/var/run/com.apple.launchd.*/Listeners` on 26) | login succeeds | denied (socket under `/private/tmp`) |
+  | `ssh-agent -a` socket in `/tmp` or `/private/tmp` | denied | denied |
+  | socket in `~/.ssh` (`IdentityAgent`-style) | denied | denied |
+  | private key file in `~/.ssh` without Browse | denied | denied |
+
+  Third-party agents such as 1Password or Secretive listen on sockets outside
+  the launchd path; the sandbox denied every such location tested, so expect
+  them not to work in the App Store build. The app
+  shows a hint in Server Properties when `SSH_AUTH_SOCK` points to such a
+  socket. Confirm the launchd result on 26.4 itself before promising ssh-agent
+  support in the App Store description.
 - Check both languages (toolbar language switch) on the Files, Tunnels, Mac
   Desktop and Import/Export screens.

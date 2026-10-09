@@ -968,8 +968,8 @@ struct WelcomeGuideItem: Identifiable, Equatable {
                 symbol: "server.rack",
                 title: language.localized("Choose a connection", "选择连接方式"),
                 message: language.localized(
-                    "Create an SSH profile with a key, ssh-agent, or encrypted local password; a Local Shell profile needs no remote host; or add a Windows RDP profile.",
-                    "可创建使用密钥、ssh-agent 或本地加密密码的 SSH 配置；本地 Shell 无需远程主机；也可以添加 Windows RDP 配置。"
+                    "Create an SSH profile with a key file, the macOS ssh-agent, or an encrypted local password; a Local Shell profile needs no remote host; or add a Windows RDP profile.",
+                    "可创建使用私钥文件、macOS 自带 ssh-agent 或本地加密密码的 SSH 配置；本地 Shell 无需远程主机；也可以添加 Windows RDP 配置。"
                 )
             ),
             WelcomeGuideItem(
@@ -3302,6 +3302,20 @@ private struct SessionEditor: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .accessibilityIdentifier("session-identity-access-hint")
+                    }
+
+                    if case .blockedBySandbox(let socketPath) = SSHAgentSandboxPolicy.availability() {
+                        Label(
+                            language.localized(
+                                "The ssh-agent at \(socketPath) can't be reached from App Sandbox, so its keys are not offered. Load the key into the macOS ssh-agent with ssh-add, or choose the key file with Browse.",
+                                "App Sandbox 无法访问位于 \(socketPath) 的 ssh-agent，其中的密钥不会被使用。请用 ssh-add 将密钥载入 macOS 自带的 ssh-agent，或通过“浏览”选择私钥文件。"
+                            ),
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("session-ssh-agent-sandbox-hint")
                     }
                 }
             }
@@ -9736,8 +9750,8 @@ private struct PasswordPanel: View {
                 .foregroundStyle(.secondary)
 
             Text(language.localized(
-                "Passwords are stored in the local encrypted SQLite vault. JTS Terminal reads saved values for SSH, SFTP, SCP, and tunnel workflows when a password is needed. For key authentication, choose the private key with Browse in Server Properties so JTS Terminal keeps permission to read it.",
-                "密码会保存到本地加密 SQLite 密码库。JTS Terminal 的 SSH、SFTP、SCP 和隧道流程会在需要密码时读取这里保存的值。使用密钥认证时，请在服务器属性中通过“浏览”选择私钥，JTS Terminal 才能持续获得读取权限。"
+                "Passwords are stored in the local encrypted SQLite vault. JTS Terminal reads saved values for SSH, SFTP, SCP, and tunnel workflows when a password is needed. For key authentication, choose the private key with Browse in Server Properties, or load it into the macOS ssh-agent with ssh-add. Third-party agents such as 1Password or Secretive cannot be reached from App Sandbox.",
+                "密码会保存到本地加密 SQLite 密码库。JTS Terminal 的 SSH、SFTP、SCP 和隧道流程会在需要密码时读取这里保存的值。使用密钥认证时，请在服务器属性中通过“浏览”选择私钥，或用 ssh-add 将密钥载入 macOS 自带的 ssh-agent。App Sandbox 无法访问 1Password、Secretive 等第三方 agent。"
             ))
                 .font(.caption)
                 .foregroundStyle(.secondary)

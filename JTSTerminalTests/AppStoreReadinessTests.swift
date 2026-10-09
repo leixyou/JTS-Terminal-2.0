@@ -63,6 +63,28 @@ struct AppStoreReadinessTests {
         SSHIdentityFileAccess.activateIfNeeded(for: "~/.ssh/id_ed25519", defaults: defaults)
     }
 
+    @Test func onlyTheLaunchdAgentSocketIsTreatedAsReachableFromTheSandbox() {
+        // Paths and outcomes measured by scripts/sandbox_probes/run_ssh_agent_probe.sh.
+        #expect(SSHAgentSandboxPolicy.isSystemAgentSocket("/var/run/com.apple.launchd.W9C3m1l0UE/Listeners"))
+        #expect(SSHAgentSandboxPolicy.isSystemAgentSocket("/private/var/run/com.apple.launchd.W9C3m1l0UE/Listeners"))
+        #expect(!SSHAgentSandboxPolicy.isSystemAgentSocket("/private/tmp/com.apple.launchd.YIqZGvE1s4/Listeners"))
+        #expect(!SSHAgentSandboxPolicy.isSystemAgentSocket("/var/run/com.apple.launchd./Listeners"))
+        #expect(!SSHAgentSandboxPolicy.isSystemAgentSocket("/var/run/com.apple.launchd.ABC/nested/Listeners"))
+        #expect(!SSHAgentSandboxPolicy.isSystemAgentSocket("/Users/example/.ssh/agent.sock"))
+        #expect(!SSHAgentSandboxPolicy.isSystemAgentSocket(
+            "/Users/example/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+        ))
+
+        #expect(SSHAgentSandboxPolicy.availability(environment: [:]) == .notConfigured)
+        #expect(SSHAgentSandboxPolicy.availability(environment: ["SSH_AUTH_SOCK": " "]) == .notConfigured)
+        #expect(SSHAgentSandboxPolicy.availability(
+            environment: ["SSH_AUTH_SOCK": "/var/run/com.apple.launchd.W9C3m1l0UE/Listeners"]
+        ) == .systemAgent)
+        #expect(SSHAgentSandboxPolicy.availability(
+            environment: ["SSH_AUTH_SOCK": "/tmp/agent.sock"]
+        ) == .blockedBySandbox(socketPath: "/tmp/agent.sock"))
+    }
+
     @Test func nonisolatedLocalizationFollowsTheSavedLanguage() {
         let suiteName = "AppStoreReadinessTests.language.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
