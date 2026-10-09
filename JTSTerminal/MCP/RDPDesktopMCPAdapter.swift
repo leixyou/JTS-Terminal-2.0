@@ -367,6 +367,7 @@ extension RDPDesktopRuntimeStore {
         var authorization: RemoteGrantAuthorization?
 
         do {
+            try target.requirePersistentMCPControl(for: capabilities)
             authorization = try grantStore.authorize(
                 clientID: clientID,
                 clientDisplayIdentity: clientDisplayIdentity,

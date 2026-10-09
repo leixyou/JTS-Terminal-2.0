@@ -215,6 +215,24 @@ extension RemoteSession {
             )
         }
     }
+
+    /// Windows control is blocked by a saved target setting, not by a request
+    /// waiting for approval. Name that one-time switch so the AI client can
+    /// tell the user exactly what to change instead of asking again.
+    func requirePersistentMCPControl(for capabilities: Set<RemoteCapability>) throws {
+        guard connectionType == .rdp, mcpEnabled else { return }
+        let profile = rdpProfile
+        guard !profile.persistentMCPControlEnabled else { return }
+        let blocked = capabilities
+            .intersection(RemoteTargetPermissionPolicy.rdp2PersistentControlCapabilities)
+            .intersection(profile.permissionPolicy.maximumCapabilities)
+        guard !blocked.isEmpty else { return }
+        let names = blocked.map(\.rawValue).sorted().joined(separator: ", ")
+        throw RemoteGrantGateFailure(
+            denialCode: RemoteAuthorizationDenialCode.capabilityNotAllowed.rawValue,
+            message: "Persistent AI control is turned off for Windows target '\(effectiveMCPAlias)', so \(names) is not allowed. This is a saved setting, not a pending approval. Ask the user to turn on \"Allow registered AI clients persistent control of this target\" in JTS Terminal > Server Properties > AI / MCP Access (服务器属性 > AI / MCP 访问 > 允许已注册 AI 客户端长期控制此目标). No further approval is needed after that until the user revokes this client in AI Access Management."
+        )
+    }
 }
 
 nonisolated private enum RemoteGrantTargetBinding {

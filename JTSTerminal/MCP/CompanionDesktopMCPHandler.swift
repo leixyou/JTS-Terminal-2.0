@@ -18,6 +18,7 @@ extension CompanionDesktopRuntime {
         let externalData = Self.externalData(tool: tool, arguments: arguments)
         func authorize() throws {
             guard target.mcpEnabled, target.mcpGrantTargetBinding == binding else { throw failure("DESKTOP_TARGET_CHANGED") }
+            try target.requirePersistentMCPControl(for: capabilities)
             _ = try security.grantStore.authorize(clientID: clientID, clientDisplayIdentity: display,
                 targetID: target.targetID, targetBinding: binding, capabilities: capabilities,
                 policy: target.mcpPermissionPolicy, externalDataTypes: externalData, implicitProfileAccess: target.mcpEnabled)

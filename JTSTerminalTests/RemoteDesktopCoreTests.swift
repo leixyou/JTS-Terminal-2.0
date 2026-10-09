@@ -5441,6 +5441,42 @@ struct RemoteDesktopCoreTests {
         )
     }
 
+    @Test func disabledRDPPersistentControlNamesTheSwitchInsteadOfAskingForApproval() throws {
+        let session = RemoteSession(
+            name: "Windows",
+            host: "windows.test",
+            username: "operator",
+            connectionType: .rdp
+        )
+        session.mcpEnabled = true
+        session.mcpAlias = "win-lab"
+        // Persistent control is on by default, so nothing needs explaining.
+        try session.requirePersistentMCPControl(for: [.desktopControl, .commandExecution])
+
+        try session.setRDPProfile(RDPConnectionProfile(
+            persistentMCPControlEnabled: false
+        ))
+        // Observation and files stay available without persistent control.
+        try session.requirePersistentMCPControl(for: [.discovery, .desktopObserve, .fileAccess])
+
+        do {
+            try session.requirePersistentMCPControl(for: [.desktopObserve, .desktopControl])
+            Issue.record("A control request must name the disabled persistent-control switch")
+        } catch let failure as RemoteGrantGateFailure {
+            #expect(failure.denialCode == RemoteAuthorizationDenialCode.capabilityNotAllowed.rawValue)
+            #expect(failure.pendingRequestID == nil)
+            #expect(failure.message.contains("'win-lab'"))
+            #expect(failure.message.contains("desktopControl"))
+            #expect(!failure.message.contains("desktopObserve"))
+            #expect(failure.message.contains("Allow registered AI clients persistent control of this target"))
+            #expect(failure.message.contains("允许已注册 AI 客户端长期控制此目标"))
+        }
+
+        // A target that is not enabled for MCP keeps the generic denial path.
+        session.mcpEnabled = false
+        try session.requirePersistentMCPControl(for: [.desktopControl])
+    }
+
     @Test func durableGrantBindingTracksEndpointIdentityAndCertificateTrust() throws {
         let targetID = UUID()
         let createdAt = Date(timeIntervalSince1970: 1_700_000_000)
