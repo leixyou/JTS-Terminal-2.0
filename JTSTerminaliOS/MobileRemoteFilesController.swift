@@ -15,6 +15,7 @@ final class MobileRemoteFilesController: ObservableObject {
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
     @Published private(set) var credentialPromptReason: MobileCredentialPromptReason?
+    @Published private(set) var hostKeyChallenge: MobileHostKeyChallenge?
     @Published var selectedEntry: MobileRemoteFileEntry?
     @Published var downloadedFile: MobileDownloadedFileDocument?
     @Published var downloadedFileName = "download"
@@ -49,27 +50,39 @@ final class MobileRemoteFilesController: ObservableObject {
         credentialPromptReason = nil
     }
 
+    func clearHostKeyChallenge() {
+        hostKeyChallenge = nil
+    }
+
     func disconnect() {
         operationTask?.cancel()
         operationTask = nil
         operationID = nil
         isLoading = false
         credentialPromptReason = nil
+        hostKeyChallenge = nil
         Task {
             await transport.disconnect()
         }
     }
 
+    /// Directories are opened; files are downloaded and offered to the
+    /// system save sheet, which the user can still cancel.
     func open(_ entry: MobileRemoteFileEntry) {
         guard entry.isDirectory else {
             selectedEntry = entry
+            prepareDownload(entry)
             return
         }
+        // Keep the path field and the listing in sync: a navigation that
+        // cannot start while another operation runs must not move the path.
+        guard !isLoading else { return }
         currentPath = entry.path
         refresh()
     }
 
     func parent() {
+        guard !isLoading else { return }
         currentPath = MobileRemotePath.parent(of: currentPath)
         refresh()
     }
@@ -94,6 +107,10 @@ final class MobileRemoteFilesController: ObservableObject {
 
     func prepareDownload(_ entry: MobileRemoteFileEntry) {
         guard !entry.isDirectory else { return }
+        if let byteSize = entry.byteSize, byteSize > MobileFileTransferLimits.maximumBytes {
+            errorMessage = MobileFileTransferLimits.tooLargeMessage(name: entry.name, byteCount: byteSize)
+            return
+        }
         run {
             let credentials = MobileCredentialStore.credentials(for: self.profile)
             let data = try await self.transport.download(
@@ -162,6 +179,7 @@ final class MobileRemoteFilesController: ObservableObject {
         isLoading = true
         errorMessage = nil
         credentialPromptReason = nil
+        hostKeyChallenge = nil
         let currentOperationID = UUID()
         operationID = currentOperationID
 
@@ -179,8 +197,24 @@ final class MobileRemoteFilesController: ObservableObject {
                 return
             } catch {
                 errorMessage = MobileCitadelClientFactory.userFacingMessage(for: error)
-                credentialPromptReason = MobileCitadelClientFactory.credentialPromptReason(for: error)
+                if let challenge = (error as? MobileNativeSSHError)?.hostKeyChallenge {
+                    hostKeyChallenge = challenge
+                } else {
+                    credentialPromptReason = MobileCitadelClientFactory.credentialPromptReason(for: error)
+                }
             }
         }
+    }
+}
+
+/// Uploads and downloads are held in memory for the system document pickers.
+/// Refuse sizes that could exhaust memory instead of letting iOS end the app.
+enum MobileFileTransferLimits {
+    static let maximumBytes: UInt64 = 256 * 1_024 * 1_024
+
+    static func tooLargeMessage(name: String, byteCount: UInt64) -> String {
+        let size = ByteCountFormatter.string(fromByteCount: Int64(clamping: byteCount), countStyle: .file)
+        let limit = ByteCountFormatter.string(fromByteCount: Int64(maximumBytes), countStyle: .file)
+        return "\(name) is \(size). Files larger than \(limit) can't be transferred on this device yet."
     }
 }

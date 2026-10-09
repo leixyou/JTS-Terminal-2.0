@@ -64,7 +64,7 @@ struct MobilePasswordPrompt: View {
                 } header: {
                     Text("Authentication")
                 } footer: {
-                    Text("Saved only in this iPhone's Keychain. Exported profiles never include passwords.")
+                    Text("Saved only in this device's Keychain. Exported profiles never include passwords.")
                 }
 
                 if let errorMessage {

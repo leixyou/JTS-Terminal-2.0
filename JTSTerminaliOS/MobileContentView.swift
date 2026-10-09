@@ -16,6 +16,7 @@ struct MobileRootView: View {
     @State private var exportDocument = MobileProfileDocument()
     @State private var importError: String?
     @State private var navigationPath = NavigationPath()
+    @State private var profilePendingDeletion: MobileServerProfile?
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -94,11 +95,33 @@ struct MobileRootView: View {
         } message: {
             Text(importError ?? "")
         }
+        .confirmationDialog(
+            "Delete Server?",
+            isPresented: Binding(
+                get: { profilePendingDeletion != nil },
+                set: { if !$0 { profilePendingDeletion = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: profilePendingDeletion
+        ) { profile in
+            Button("Delete \(profile.displayName)", role: .destructive) {
+                store.delete(profile)
+                profilePendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                profilePendingDeletion = nil
+            }
+        } message: { _ in
+            Text("The open session is closed and the password and private key saved for this server are removed from this device.")
+        }
     }
 
     private var serverList: some View {
         ScrollView {
             serverListContent
+                // Keep cards at a readable width on iPad and in landscape.
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
                 .padding(.bottom, 32)
@@ -157,9 +180,9 @@ struct MobileRootView: View {
                         }
 
                         Button(role: .destructive) {
-                            store.delete(profile)
+                            profilePendingDeletion = profile
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            Label("Delete…", systemImage: "trash")
                         }
                     }
                 }
@@ -237,7 +260,7 @@ private struct MobileEmptyServerState: View {
                 VStack(spacing: 8) {
                     Text("No Servers")
                         .font(.title2.weight(.bold))
-                    Text("Add an SSH profile to open Terminal and Files from this iPhone.")
+                    Text("Add an SSH profile to open Terminal and Files from this device.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -263,6 +286,7 @@ private struct MobileEmptyServerState: View {
                 }
             }
             .padding(24)
+            .frame(maxWidth: 520)
             .mobileGlassSurface(cornerRadius: 32, tint: Color.white.opacity(0.08))
             .padding(.horizontal, 24)
         }
@@ -337,6 +361,7 @@ private struct ServerRow: View {
     let profile: MobileServerProfile
 
     var body: some View {
+        let credentials = MobileCredentialStore.credentials(for: profile)
         HStack(spacing: 12) {
             Image(systemName: profile.isConnectable ? "server.rack" : "exclamationmark.triangle")
                 .font(.title3)
@@ -360,7 +385,7 @@ private struct ServerRow: View {
                 HStack(spacing: 8) {
                     Label(profile.remotePath, systemImage: "folder")
                         .lineLimit(1)
-                    Label(credentialLabel, systemImage: credentialSystemImage)
+                    Label(credentialLabel(credentials), systemImage: credentialSystemImage(credentials))
                         .lineLimit(1)
                 }
                 .font(.caption2)
@@ -376,8 +401,7 @@ private struct ServerRow: View {
         .padding(.vertical, 6)
     }
 
-    private var credentialLabel: String {
-        let credentials = MobileCredentialStore.credentials(for: profile)
+    private func credentialLabel(_ credentials: MobileSSHCredentials) -> String {
         switch (credentials.hasPassword, credentials.hasPrivateKey) {
         case (true, true):
             return "Password + key"
@@ -390,9 +414,8 @@ private struct ServerRow: View {
         }
     }
 
-    private var credentialSystemImage: String {
-        let credentials = MobileCredentialStore.credentials(for: profile)
-        return credentials.hasPassword || credentials.hasPrivateKey ? "checkmark.seal" : "key"
+    private func credentialSystemImage(_ credentials: MobileSSHCredentials) -> String {
+        credentials.hasPassword || credentials.hasPrivateKey ? "checkmark.seal" : "key"
     }
 }
 
@@ -402,6 +425,7 @@ private struct MobileServerWorkspace: View {
     @ObservedObject private var terminalController: MobileTerminalController
     @ObservedObject private var filesController: MobileRemoteFilesController
     @State private var credentialRequest: MobileWorkspaceCredentialRequest?
+    @State private var hostKeyRequest: MobileWorkspaceHostKeyRequest?
 
     init(profile: MobileServerProfile, session: MobileServerSession) {
         self.profile = profile
@@ -457,6 +481,37 @@ private struct MobileServerWorkspace: View {
         .onChange(of: filesController.credentialPromptReason) { _, reason in
             presentCredentialPrompt(reason, target: .files)
         }
+        .onChange(of: terminalController.hostKeyChallenge) { _, challenge in
+            presentHostKeyPrompt(challenge, target: .terminal)
+        }
+        .onChange(of: filesController.hostKeyChallenge) { _, challenge in
+            presentHostKeyPrompt(challenge, target: .files)
+        }
+        .alert(
+            hostKeyRequest?.challenge.isChangedKey == true ? "Host Key Changed" : "Verify Host Key",
+            isPresented: Binding(
+                get: { hostKeyRequest != nil },
+                set: { if !$0 { cancelHostKeyPrompt() } }
+            ),
+            presenting: hostKeyRequest
+        ) { request in
+            if request.challenge.isChangedKey {
+                Button("Replace Saved Key", role: .destructive) {
+                    trustHostKey(request)
+                }
+                .accessibilityIdentifier("mobile.hostKeyReplaceButton")
+            } else {
+                Button("Trust and Connect") {
+                    trustHostKey(request)
+                }
+                .accessibilityIdentifier("mobile.hostKeyTrustButton")
+            }
+            Button("Cancel", role: .cancel) {
+                cancelHostKeyPrompt()
+            }
+        } message: { request in
+            Text(hostKeyMessage(for: request.challenge))
+        }
         .sheet(item: $credentialRequest, onDismiss: clearCredentialPrompts) { request in
             MobilePasswordPrompt(profile: profile, reason: request.reason) { password in
                 try MobileCredentialStore.save(password, for: profile, kind: .password)
@@ -487,6 +542,49 @@ private struct MobileServerWorkspace: View {
         terminalController.clearCredentialPrompt()
         filesController.clearCredentialPrompt()
     }
+
+    private func presentHostKeyPrompt(
+        _ challenge: MobileHostKeyChallenge?,
+        target: MobileWorkspaceCredentialTarget
+    ) {
+        guard let challenge, hostKeyRequest == nil else { return }
+        hostKeyRequest = MobileWorkspaceHostKeyRequest(challenge: challenge, target: target)
+    }
+
+    private func trustHostKey(_ request: MobileWorkspaceHostKeyRequest) {
+        MobileKnownHostsStore.trust(request.challenge)
+        hostKeyRequest = nil
+        terminalController.clearHostKeyChallenge()
+        filesController.clearHostKeyChallenge()
+
+        switch request.target {
+        case .terminal:
+            terminalController.connect(profile: profile)
+        case .files:
+            filesController.refresh()
+        }
+    }
+
+    private func cancelHostKeyPrompt() {
+        hostKeyRequest = nil
+        terminalController.clearHostKeyChallenge()
+        filesController.clearHostKeyChallenge()
+    }
+
+    private func hostKeyMessage(for challenge: MobileHostKeyChallenge) -> String {
+        switch challenge.kind {
+        case .unknown:
+            return "This is the first connection to \(challenge.endpointDescription). Compare the \(challenge.keyAlgorithm) fingerprint with the server before trusting it:\n\n\(challenge.fingerprint)"
+        case .changed(let previousFingerprint):
+            return "The server at \(challenge.endpointDescription) presented a different \(challenge.keyAlgorithm) key. This can mean the server was reinstalled, or that someone is intercepting the connection.\n\nSaved: \(previousFingerprint)\nNew: \(challenge.fingerprint)\n\nReplace the saved key only if the server administrator confirms the new fingerprint."
+        }
+    }
+}
+
+private struct MobileWorkspaceHostKeyRequest: Identifiable {
+    let id = UUID()
+    let challenge: MobileHostKeyChallenge
+    let target: MobileWorkspaceCredentialTarget
 }
 
 private enum MobileWorkspaceCredentialTarget {
@@ -878,6 +976,15 @@ private struct MobileFilesPanel: View {
                 if stopAccess {
                     url.stopAccessingSecurityScopedResource()
                 }
+            }
+            if let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+               fileSize > 0,
+               UInt64(fileSize) > MobileFileTransferLimits.maximumBytes {
+                controller.errorMessage = MobileFileTransferLimits.tooLargeMessage(
+                    name: url.lastPathComponent,
+                    byteCount: UInt64(fileSize)
+                )
+                return
             }
             let data = try Data(contentsOf: url)
             controller.upload(data: data, fileName: url.lastPathComponent)

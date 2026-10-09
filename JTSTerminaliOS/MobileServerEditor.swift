@@ -16,6 +16,8 @@ struct MobileServerEditor: View {
     @State private var password = ""
     @State private var privateKeyPassphrase = ""
     @State private var importedPrivateKey: String?
+    @State private var hasStoredPrivateKey = false
+    @State private var removesStoredPrivateKey = false
     @State private var keyStatus = "No private key imported"
     @State private var isImportingPrivateKey = false
     @State private var errorMessage: String?
@@ -59,7 +61,7 @@ struct MobileServerEditor: View {
                         .accessibilityIdentifier("mobile.serverRemotePathField")
                 }
 
-                Section("Authentication") {
+                Section {
                     SecureField("SSH password", text: $password)
                         .textContentType(.password)
                         .accessibilityIdentifier("mobile.serverPasswordField")
@@ -74,8 +76,20 @@ struct MobileServerEditor: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    if importedPrivateKey != nil || (hasStoredPrivateKey && !removesStoredPrivateKey) {
+                        Button(role: .destructive) {
+                            removePrivateKey()
+                        } label: {
+                            Label("Remove Private Key", systemImage: "trash")
+                        }
+                    }
+
                     SecureField("Private key passphrase", text: $privateKeyPassphrase)
                         .textContentType(.password)
+                } header: {
+                    Text("Authentication")
+                } footer: {
+                    Text("Clear a field and save to remove that saved value. Secrets stay in this device's Keychain and are never exported.")
                 }
 
                 if let errorMessage {
@@ -126,8 +140,18 @@ struct MobileServerEditor: View {
         }
         if let storedKey = try? MobileCredentialStore.read(for: draft, kind: .privateKey),
            !storedKey.isEmpty {
+            hasStoredPrivateKey = true
             keyStatus = "Private key is saved for this server"
         }
+    }
+
+    private func removePrivateKey() {
+        importedPrivateKey = nil
+        removesStoredPrivateKey = hasStoredPrivateKey
+        draft.identityFile = ""
+        keyStatus = hasStoredPrivateKey
+            ? "The saved private key will be removed when you save"
+            : "No private key imported"
     }
 
     private func handlePrivateKeyImport(_ result: Result<[URL], Error>) {
@@ -140,11 +164,16 @@ struct MobileServerEditor: View {
                 }
             }
             let key = try String(contentsOf: url, encoding: .utf8)
-            guard key.contains("BEGIN OPENSSH PRIVATE KEY") || key.contains("BEGIN RSA PRIVATE KEY") else {
-                errorMessage = "Choose an OpenSSH private key file."
+            // The SSH client parses the OpenSSH container format only. Reject
+            // PEM keys here instead of failing later at connection time.
+            guard key.contains("BEGIN OPENSSH PRIVATE KEY") else {
+                errorMessage = key.contains("PRIVATE KEY")
+                    ? "This key uses the older PEM format. Convert it with \"ssh-keygen -p -f <key>\" and import it again."
+                    : "Choose an OpenSSH private key file."
                 return
             }
             importedPrivateKey = key
+            removesStoredPrivateKey = false
             draft.identityFile = url.lastPathComponent
             keyStatus = "Ready to save \(url.lastPathComponent)"
             errorMessage = nil
@@ -155,13 +184,21 @@ struct MobileServerEditor: View {
 
     private func save() {
         do {
-            if let password = password.mobileNilIfBlank {
+            // Store passwords exactly as typed; leading or trailing spaces are
+            // part of the secret. An empty field removes the saved value.
+            if password.isEmpty {
+                MobileCredentialStore.delete(for: draft, kind: .password)
+            } else {
                 try MobileCredentialStore.save(password, for: draft, kind: .password)
             }
             if let importedPrivateKey {
                 try MobileCredentialStore.save(importedPrivateKey, for: draft, kind: .privateKey)
+            } else if removesStoredPrivateKey {
+                MobileCredentialStore.delete(for: draft, kind: .privateKey)
             }
-            if let privateKeyPassphrase = privateKeyPassphrase.mobileNilIfBlank {
+            if privateKeyPassphrase.isEmpty {
+                MobileCredentialStore.delete(for: draft, kind: .privateKeyPassphrase)
+            } else {
                 try MobileCredentialStore.save(privateKeyPassphrase, for: draft, kind: .privateKeyPassphrase)
             }
             onSave(draft)
