@@ -1,0 +1,31 @@
+name: Sandbox ssh-agent probe
+
+# Temporary measurement: can JTS Terminal's App Sandbox reach an ssh-agent?
+# Runs scripts/sandbox_probes/run_ssh_agent_probe.sh on hosted macOS. It builds
+# no app, uses no signing identity and needs no secrets.
+on:
+  push:
+    branches:
+      - claude/charming-edison-lvupnd
+    paths:
+      - scripts/sandbox_probes/**
+      - .github/workflows/sandbox-ssh-agent-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run probe
+        run: bash scripts/sandbox_probes/run_ssh_agent_probe.sh
