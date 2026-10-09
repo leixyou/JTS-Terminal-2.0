@@ -4,6 +4,9 @@
 //
 // Usage: ssh-agent-probe [file-to-open]
 // Environment: SSH_AUTH_SOCK selects the agent socket to test.
+// JTS_PROBE_SSH_TARGET (user@host) and JTS_PROBE_SSH_PORT, when set, add a
+// real public-key login with /usr/bin/ssh that can only succeed through the
+// agent, because the probe cannot read any private key file.
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -97,9 +100,9 @@ static const char *probe_agent_socket(const char *path) {
     return "OK";
 }
 
-// Runs /usr/bin/ssh-add -l the way JTS Terminal runs /usr/bin/ssh: a child
-// process that inherits the sandbox and SSH_AUTH_SOCK.
-static int probe_ssh_add(void) {
+// Runs a system tool the way JTS Terminal runs /usr/bin/ssh: a child process
+// that inherits the sandbox and SSH_AUTH_SOCK. Returns its exit status.
+static int run_child(const char *label, char *const arguments[]) {
     int pipe_fds[2];
     if (pipe(pipe_fds) != 0) {
         printf("  pipe(): FAILED\n");
@@ -112,14 +115,13 @@ static int probe_ssh_add(void) {
     posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO);
     posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
 
-    char *const arguments[] = {"/usr/bin/ssh-add", "-l", NULL};
     pid_t pid;
     int spawn_error = posix_spawn(&pid, arguments[0], &actions, NULL, arguments, environ);
     posix_spawn_file_actions_destroy(&actions);
     close(pipe_fds[1]);
     if (spawn_error != 0) {
         close(pipe_fds[0]);
-        printf("  posix_spawn(ssh-add): FAILED errno=%d (%s)\n", spawn_error, strerror(spawn_error));
+        printf("  posix_spawn(%s): FAILED errno=%d (%s)\n", label, spawn_error, strerror(spawn_error));
         return -1;
     }
 
@@ -135,13 +137,34 @@ static int probe_ssh_add(void) {
     int status = 0;
     waitpid(pid, &status, 0);
     int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-    // ssh-add -l: 0 = identities listed, 1 = agent reached but empty,
-    // 2 = could not contact the agent.
-    printf("  ssh-add -l exit=%d: %s", exit_code, used > 0 ? output : "(no output)\n");
+    printf("  %s exit=%d: %s", label, exit_code, used > 0 ? output : "(no output)\n");
     if (used > 0 && output[used - 1] != '\n') {
         printf("\n");
     }
     return exit_code;
+}
+
+// ssh-add -l: 0 = identities listed, 1 = agent reached but empty,
+// 2 = could not contact the agent.
+static int probe_ssh_add(void) {
+    char *const arguments[] = {"/usr/bin/ssh-add", "-l", NULL};
+    return run_child("ssh-add -l", arguments);
+}
+
+// Public-key login without any configuration or key file, so only the agent
+// can authenticate. 0 = logged in, 255 = rejected or unreachable.
+static int probe_ssh_login(const char *target, const char *port) {
+    char *const arguments[] = {
+        "/usr/bin/ssh", "-F", "/dev/null", "-p", (char *)port,
+        "-o", "BatchMode=yes",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "PreferredAuthentications=publickey",
+        "-o", "LogLevel=ERROR",
+        "-o", "ConnectTimeout=10",
+        "--", (char *)target, "true", NULL
+    };
+    return run_child("ssh login", arguments);
 }
 
 static const char *probe_file(const char *path) {
@@ -168,10 +191,16 @@ int main(int argc, char *argv[]) {
 
     const char *socket_result = "NO_SOCKET";
     int ssh_add_exit = -1;
+    int ssh_login_exit = -1;
     if (socket_path && socket_path[0] != '\0') {
         printf("  SSH_AUTH_SOCK=%s\n", socket_path);
         socket_result = probe_agent_socket(socket_path);
         ssh_add_exit = probe_ssh_add();
+        const char *target = getenv("JTS_PROBE_SSH_TARGET");
+        const char *port = getenv("JTS_PROBE_SSH_PORT");
+        if (target && target[0] != '\0' && port && port[0] != '\0') {
+            ssh_login_exit = probe_ssh_login(target, port);
+        }
     } else {
         printf("  SSH_AUTH_SOCK is not set\n");
     }
@@ -181,7 +210,7 @@ int main(int argc, char *argv[]) {
         file_result = probe_file(argv[1]);
     }
 
-    printf("RESULT sandboxed=%s socket=%s ssh_add_exit=%d key_file=%s\n",
-           sandboxed ? "yes" : "no", socket_result, ssh_add_exit, file_result);
+    printf("RESULT sandboxed=%s socket=%s ssh_add_exit=%d ssh_login_exit=%d key_file=%s\n",
+           sandboxed ? "yes" : "no", socket_result, ssh_add_exit, ssh_login_exit, file_result);
     return 0;
 }

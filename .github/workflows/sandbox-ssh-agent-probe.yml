@@ -28,4 +28,8 @@ jobs:
         with:
           persist-credentials: false
       - name: Run probe
+        env:
+          # Hosted runners are disposable: allow the throwaway launchd-agent key
+          # and the temporary key-only sshd used for the real login check.
+          JTS_PROBE_ALLOW_SYSTEM_CHANGES: "1"
         run: bash scripts/sandbox_probes/run_ssh_agent_probe.sh
