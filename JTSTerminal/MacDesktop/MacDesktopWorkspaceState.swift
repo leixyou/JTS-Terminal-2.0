@@ -38,13 +38,13 @@ final class MacDesktopWorkspaceState: ObservableObject {
 
         var title: String {
             switch self {
-            case .disconnected: return "未连接"
-            case .connecting: return "正在连接 Mac"
-            case .authenticating: return "正在验证配对"
-            case .awaitingApproval: return "等待对方 Mac 批准"
-            case .connected: return "已连接"
-            case .reconnecting: return "等待自动重连"
-            case .failed: return "连接失败"
+            case .disconnected: return macDesktopText("Not connected", "未连接")
+            case .connecting: return macDesktopText("Connecting to Mac", "正在连接 Mac")
+            case .authenticating: return macDesktopText("Verifying pairing", "正在验证配对")
+            case .awaitingApproval: return macDesktopText("Waiting for approval on the other Mac", "等待对方 Mac 批准")
+            case .connected: return macDesktopText("Connected", "已连接")
+            case .reconnecting: return macDesktopText("Waiting to reconnect", "等待自动重连")
+            case .failed: return macDesktopText("Connection failed", "连接失败")
             }
         }
     }
@@ -52,7 +52,7 @@ final class MacDesktopWorkspaceState: ObservableObject {
     @Published private(set) var status: Status = .disconnected
     @Published private(set) var errorMessage: String?
     @Published private(set) var notice: String?
-    @Published private(set) var hostName = "Mac 桌面"
+    @Published private(set) var hostName = macDesktopText("Mac Desktop", "Mac 桌面")
     @Published private(set) var image: NSImage?
     @Published private(set) var frameSize = CGSize.zero
     @Published private(set) var canControl = false
@@ -124,7 +124,10 @@ final class MacDesktopWorkspaceState: ObservableObject {
             }
         } catch {
             hasSavedPairing = false
-            errorMessage = "无法读取 加密凭据库中的配对：\(error.localizedDescription)"
+            errorMessage = macDesktopText(
+                "Could not read the pairing from the encrypted vault: \(error.localizedDescription)",
+                "无法读取加密凭据库中的配对：\(error.localizedDescription)"
+            )
         }
     }
 
@@ -140,7 +143,10 @@ final class MacDesktopWorkspaceState: ObservableObject {
             if !code.isEmpty {
                 let invitation = try DesktopPairingInvitation(code: code)
                 guard invitation.expiresAt > dependencies.now() else {
-                    throw MacDesktopClientError.message("配对邀请已过期，请在对方 Mac 重新生成。")
+                    throw MacDesktopClientError.message(macDesktopText(
+                        "The pairing invitation expired. Create a new one on the other Mac.",
+                        "配对邀请已过期，请在对方 Mac 重新生成。"
+                    ))
                 }
                 // Freeze the endpoint before model observers can prepare the updated profile.
                 endpoint = (invitation.host, Int(invitation.port))
@@ -161,13 +167,21 @@ final class MacDesktopWorkspaceState: ObservableObject {
             } else {
                 guard session.isConnectable,
                       let stored = try dependencies.readPairing(session.host, session.port) else {
-                    throw MacDesktopClientError.message("请粘贴对方 Mac Companion 生成的配对邀请。")
+                    throw MacDesktopClientError.message(macDesktopText(
+                        "Paste the pairing invitation created by JTS Mac Companion on the other Mac.",
+                        "请粘贴对方 Mac Companion 生成的配对邀请。"
+                    ))
                 }
                 pairing = stored
                 autoReconnect = stored.autoReconnect
                 hasSavedPairing = true
             }
-            guard (1...65535).contains(session.port) else { throw MacDesktopClientError.message("Mac 桌面端口必须为 1–65535。") }
+            guard (1...65535).contains(session.port) else {
+                throw MacDesktopClientError.message(macDesktopText(
+                    "The Mac Desktop port must be between 1 and 65535.",
+                    "Mac 桌面端口必须为 1–65535。"
+                ))
+            }
             let connection = Connection(host: session.host, port: session.port, name: session.name, pairing: pairing)
             // An invitation is single use and must never enter the retry path.
             if invitationToken == nil { desiredConnection = connection }
@@ -206,8 +220,13 @@ final class MacDesktopWorkspaceState: ObservableObject {
                         self.authenticated = true
                         self.status = .authenticating
                         self.transmit(.authenticate(authentication))
-                    case .failed(let error): self.transportFailed(error, prefix: "连接失败")
-                    case .cancelled: self.fail("与对方 Mac 的连接已中断。", retry: .network)
+                    case .failed(let error):
+                        self.transportFailed(error, prefix: macDesktopText("Connection failed", "连接失败"))
+                    case .cancelled:
+                        self.fail(macDesktopText(
+                            "The connection to the other Mac was interrupted.",
+                            "与对方 Mac 的连接已中断。"
+                        ), retry: .network)
                     default: break
                     }
                 }
@@ -221,7 +240,7 @@ final class MacDesktopWorkspaceState: ObservableObject {
             channel.onError = { [weak self] error in
                 MainActor.assumeIsolated {
                     guard let self, self.generation == currentGeneration else { return }
-                    self.transportFailed(error, prefix: "桌面连接中断")
+                    self.transportFailed(error, prefix: macDesktopText("Desktop connection interrupted", "桌面连接中断"))
                 }
             }
             channel.start(queue: queue)
@@ -229,10 +248,13 @@ final class MacDesktopWorkspaceState: ObservableObject {
             timeoutTask = Task { [weak self] in
                 do { try await sleep(invitationToken == nil ? 30 : 120) } catch { return }
                 guard !Task.isCancelled, let self, !self.retired, self.generation == currentGeneration, !self.isConnected else { return }
-                self.fail("连接或批准等待超时。请检查两台 Mac 的网络，并在对方 Mac 确认请求。", retry: invitationToken == nil ? .network : nil)
+                self.fail(macDesktopText(
+                    "Timed out waiting for the connection or approval. Check both Macs' networks and confirm the request on the other Mac.",
+                    "连接或批准等待超时。请检查两台 Mac 的网络，并在对方 Mac 确认请求。"
+                ), retry: invitationToken == nil ? .network : nil)
             }
         } catch {
-            transportFailed(error, prefix: "连接失败")
+            transportFailed(error, prefix: macDesktopText("Connection failed", "连接失败"))
         }
     }
 
@@ -265,10 +287,13 @@ final class MacDesktopWorkspaceState: ObservableObject {
             pendingPairing?.autoReconnect = enabled
             if !enabled, retryTask != nil {
                 disconnect()
-                notice = "已停止自动重连。"
+                notice = macDesktopText("Automatic reconnection stopped.", "已停止自动重连。")
             }
         } catch {
-            errorMessage = "无法保存自动重连设置：\(error.localizedDescription)"
+            errorMessage = macDesktopText(
+                "Could not save the reconnection setting: \(error.localizedDescription)",
+                "无法保存自动重连设置：\(error.localizedDescription)"
+            )
         }
     }
 
@@ -309,9 +334,15 @@ final class MacDesktopWorkspaceState: ObservableObject {
         do {
             try dependencies.deletePairing(session.host, session.port)
             hasSavedPairing = false
-            notice = "已从此 Mac 的 加密凭据库移除配对。重新连接需要对方生成邀请并批准。"
+            notice = macDesktopText(
+                "The pairing was removed from this Mac's encrypted vault. Reconnecting requires a new invitation and approval on the other Mac.",
+                "已从此 Mac 的加密凭据库移除配对。重新连接需要对方生成邀请并批准。"
+            )
         } catch {
-            errorMessage = "移除配对失败：\(error.localizedDescription)"
+            errorMessage = macDesktopText(
+                "Could not remove the pairing: \(error.localizedDescription)",
+                "移除配对失败：\(error.localizedDescription)"
+            )
         }
     }
 
@@ -321,17 +352,20 @@ final class MacDesktopWorkspaceState: ObservableObject {
         switch message {
         case .hello(let hello):
             guard !receivedHello, [.connecting, .authenticating].contains(status), hello.protocolVersion == DesktopProtocol.version else {
-                fail("两台 Mac 的桌面协议版本或连接状态不同，请更新程序后重新连接。")
+                fail(macDesktopText(
+                    "The two Macs use different desktop protocol versions or states. Update both apps and reconnect.",
+                    "两台 Mac 的桌面协议版本或连接状态不同，请更新程序后重新连接。"
+                ))
                 return
             }
             receivedHello = true
             hostName = hello.hostName
         case .pairingPending:
-            guard receivedHello, authenticated, usesInvitation, status == .authenticating else { fail("对方 Mac 的配对状态无效。") ; return }
+            guard receivedHello, authenticated, usesInvitation, status == .authenticating else { fail(macDesktopText("The other Mac reported an invalid pairing state.", "对方 Mac 的配对状态无效。")) ; return }
             status = .awaitingApproval
         case .pairingApproved(let approval):
             guard receivedHello, authenticated, usesInvitation, status == .awaitingApproval,
-                  var pairing = pendingPairing, let endpoint, !approval.token.isEmpty else { fail("配对批准状态无效或缺少凭证。") ; return }
+                  var pairing = pendingPairing, let endpoint, !approval.token.isEmpty else { fail(macDesktopText("The pairing approval is invalid or has no credential.", "配对批准状态无效或缺少凭证。")) ; return }
             pairing.token = approval.token
             pairing.psk = approval.psk
             status = .authenticating
@@ -343,11 +377,14 @@ final class MacDesktopWorkspaceState: ObservableObject {
                 invitationCode = ""
                 hostName = approval.hostName
             } catch {
-                notice = "当前连接可用，但 加密凭据库保存失败；下次连接需要重新配对。"
+                notice = macDesktopText(
+                    "This connection works, but saving to the encrypted vault failed. The next connection requires pairing again.",
+                    "当前连接可用，但加密凭据库保存失败；下次连接需要重新配对。"
+                )
             }
         case .ready(let info):
             guard receivedHello, authenticated, [.authenticating, .connected].contains(status),
-                  pendingPairing?.token.isEmpty == false else { fail("对方 Mac 尚未完成设备授权。") ; return }
+                  pendingPairing?.token.isEmpty == false else { fail(macDesktopText("The other Mac has not finished authorizing this device.", "对方 Mac 尚未完成设备授权。")) ; return }
             hostName = info.hostName
             canControl = info.canControl
             frameSize = CGSize(width: info.width, height: info.height)
@@ -357,7 +394,7 @@ final class MacDesktopWorkspaceState: ObservableObject {
             timeoutTask?.cancel()
             startHeartbeat()
         case .frame(let frame):
-            guard isConnected, receivedHello else { fail("对方 Mac 在授权前发送了桌面画面。") ; return }
+            guard isConnected, receivedHello else { fail(macDesktopText("The other Mac sent desktop frames before authorization.", "对方 Mac 在授权前发送了桌面画面。")) ; return }
             enqueueFrame(frame)
         case .error(let message): fail(message)
         case .sessionEnded(let end):
@@ -368,7 +405,8 @@ final class MacDesktopWorkspaceState: ObservableObject {
             notice = message
         case .ping(let sequence): transmit(.pong(sequence))
         case .pong: break
-        case .authenticate, .input: fail("对方发送了无效的桌面消息。")
+        case .authenticate, .input:
+            fail(macDesktopText("The other Mac sent an invalid desktop message.", "对方发送了无效的桌面消息。"))
         }
     }
 
@@ -409,7 +447,10 @@ final class MacDesktopWorkspaceState: ObservableObject {
                 do { try await sleep(10) } catch { return }
                 guard !Task.isCancelled, let self, !self.retired, self.isConnected else { return }
                 guard self.dependencies.now().timeIntervalSince(self.lastReceivedAt) < 35 else {
-                    self.fail("与对方 Mac 的心跳连接已中断。", retry: .network)
+                    self.fail(macDesktopText(
+                        "The other Mac stopped responding to heartbeats.",
+                        "与对方 Mac 的心跳连接已中断。"
+                    ), retry: .network)
                     return
                 }
                 sequence &+= 1
@@ -424,13 +465,16 @@ final class MacDesktopWorkspaceState: ObservableObject {
             guard let error else { return }
             Task { @MainActor in
                 guard let self, self.generation == currentGeneration else { return }
-                self.transportFailed(error, prefix: "桌面数据发送失败")
+                self.transportFailed(error, prefix: macDesktopText("Could not send desktop data", "桌面数据发送失败"))
             }
         }
     }
 
     private func transportFailed(_ error: Error, prefix: String) {
-        fail("\(prefix)：\(error.localizedDescription)", retry: MacDesktopReconnectPolicy.cause(for: error))
+        fail(
+            prefix + macDesktopText(": ", "：") + error.localizedDescription,
+            retry: MacDesktopReconnectPolicy.cause(for: error)
+        )
     }
 
     private func fail(_ message: String, retry cause: MacDesktopReconnectPolicy.Cause? = nil) {
@@ -450,7 +494,10 @@ final class MacDesktopWorkspaceState: ObservableObject {
         }
         retryTask?.cancel()
         status = .reconnecting
-        notice = "\(Int(delay)) 秒后自动重连（第 \(reconnectPolicy.attempt) 次）；可点击取消停止。"
+        notice = macDesktopText(
+            "Reconnecting in \(Int(delay)) s (attempt \(reconnectPolicy.attempt)). Click Cancel to stop.",
+            "\(Int(delay)) 秒后自动重连（第 \(reconnectPolicy.attempt) 次）；可点击取消停止。"
+        )
         let currentGeneration = generation
         let sleep = dependencies.sleep
         retryTask = Task { [weak self] in
@@ -462,6 +509,10 @@ final class MacDesktopWorkspaceState: ObservableObject {
         }
     }
 
+}
+
+private func macDesktopText(_ english: String, _ simplifiedChinese: String) -> String {
+    AppLanguage.stored.localized(english, simplifiedChinese)
 }
 
 private enum MacDesktopClientError: LocalizedError {

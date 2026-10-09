@@ -37,8 +37,16 @@ nonisolated enum MacDesktopFrameError: LocalizedError {
     case invalidDimensions, invalidJPEG
     nonisolated var errorDescription: String? {
         switch self {
-        case .invalidDimensions: return "对方 Mac 的画面尺寸无效或超过客户端限制。"
-        case .invalidJPEG: return "无法解码对方 Mac 的桌面画面。"
+        case .invalidDimensions:
+            return AppLanguage.localizedForStoredLanguage(
+                "The other Mac sent an invalid frame size or one larger than this client supports.",
+                "对方 Mac 的画面尺寸无效或超过客户端限制。"
+            )
+        case .invalidJPEG:
+            return AppLanguage.localizedForStoredLanguage(
+                "The other Mac's desktop image could not be decoded.",
+                "无法解码对方 Mac 的桌面画面。"
+            )
         }
     }
 }

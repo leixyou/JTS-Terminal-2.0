@@ -20,10 +20,14 @@ final class MacSystemScreenSharingStore {
     func disconnectAll() { states.values.forEach { $0.stop() } }
 }
 
+private func screenSharingText(_ english: String, _ simplifiedChinese: String) -> String {
+    AppLanguage.stored.localized(english, simplifiedChinese)
+}
+
 /// App lifetime owns the bridge; leaving the panel cannot terminate the viewer.
 @MainActor
 final class MacSystemScreenSharingState: ObservableObject {
-    @Published private(set) var status = "尚未连接"
+    @Published private(set) var status = screenSharingText("Not connected", "尚未连接")
     @Published private(set) var active = false
     @Published var autoReconnect: Bool { didSet { UserDefaults.standard.set(autoReconnect, forKey: preferenceKey) } }
     private let targetID: UUID
@@ -60,7 +64,9 @@ final class MacSystemScreenSharingState: ObservableObject {
             while !Task.isCancelled, generation == token {
                 guard failures == 0 || autoReconnect else { break }
                 do {
-                    status = failures == 0 ? "正在连接加密中继…" : "正在重连…"
+                    status = failures == 0
+                        ? screenSharingText("Connecting to the encrypted relay…", "正在连接加密中继…")
+                        : screenSharingText("Reconnecting…", "正在重连…")
                     guard let route = try await CompanionTargetRouteStore.shared.binding(targetID: targetID, targetBinding: targetBinding),
                           let grantID = route.rdpGrantID else { throw CompanionTargetRouteError.invalid }
                     guard generation == token, !Task.isCancelled else { return }
@@ -76,11 +82,16 @@ final class MacSystemScreenSharingState: ObservableObject {
                     next.watchTrust(targetID: targetID, deviceID: route.deviceID)
                     observation = next.$phase.sink { [weak self] phase in
                         switch phase {
-                        case .opening: self?.status = "正在建立通道…"
-                        case .waitingForViewer: self?.status = "等待系统屏幕共享连接"
-                        case .connected: self?.status = "系统屏幕共享已连接"
-                        case .stopped: self?.status = "连接已结束"
-                        case .failed: self?.status = "通道中断"
+                        case .opening:
+                            self?.status = screenSharingText("Opening the channel…", "正在建立通道…")
+                        case .waitingForViewer:
+                            self?.status = screenSharingText("Waiting for Screen Sharing to connect", "等待系统屏幕共享连接")
+                        case .connected:
+                            self?.status = screenSharingText("Screen Sharing connected", "系统屏幕共享已连接")
+                        case .stopped:
+                            self?.status = screenSharingText("Connection ended", "连接已结束")
+                        case .failed:
+                            self?.status = screenSharingText("Channel interrupted", "通道中断")
                         }
                     }
                     guard let url = next.viewerURL, NSWorkspace.shared.open(url) else {
@@ -97,7 +108,10 @@ final class MacSystemScreenSharingState: ObservableObject {
                     guard !endedByTrustChange, !viewerEnded, retryableEnd, autoReconnect, generation == token else { break }
                 } catch {
                     guard !Task.isCancelled, generation == token else { return }
-                    status = "无法连接，请检查配对、网络和被控 Mac 的系统屏幕共享设置。"
+                    status = screenSharingText(
+                        "Could not connect. Check the pairing, the network and Screen Sharing on the remote Mac.",
+                        "无法连接，请检查配对、网络和被控 Mac 的系统屏幕共享设置。"
+                    )
                     guard Self.canRetry(error), autoReconnect else { break }
                 }
                 failures += 1
@@ -140,7 +154,7 @@ final class MacSystemScreenSharingState: ObservableObject {
         generation = UUID(); task?.cancel(); task = nil
         clearTrustObservers()
         observation = nil; bridge?.stop(); bridge = nil
-        active = false; status = "已断开"
+        active = false; status = screenSharingText("Disconnected", "已断开")
     }
 
     /// A removed profile must not reconnect through a retained view or queued action.
