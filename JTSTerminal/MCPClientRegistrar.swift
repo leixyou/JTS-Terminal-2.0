@@ -1515,13 +1515,13 @@ nonisolated struct MCPClientRegistrar {
         with replacement: String
     ) -> String {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let targetHeader = normalizedTOMLTableHeader(sectionHeader) ?? sectionHeader
         var output: [String] = []
         var index = 0
         var didReplace = false
 
         while index < lines.count {
-            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
-            if trimmed == sectionHeader {
+            if normalizedTOMLTableHeader(lines[index]) == targetHeader {
                 if !didReplace {
                     if !output.isEmpty, output.last?.isEmpty == false {
                         output.append("")
@@ -1532,8 +1532,7 @@ nonisolated struct MCPClientRegistrar {
                 index += 1
 
                 while index < lines.count {
-                    let nextTrimmed = lines[index].trimmingCharacters(in: .whitespaces)
-                    if nextTrimmed.hasPrefix("[") && nextTrimmed.hasSuffix("]") {
+                    if normalizedTOMLTableHeader(lines[index]) != nil {
                         break
                     }
                     index += 1
@@ -1559,21 +1558,87 @@ nonisolated struct MCPClientRegistrar {
 
     static func tomlSection(named sectionHeader: String, in text: String) -> [String]? {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        guard let start = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == sectionHeader }) else {
+        let targetHeader = normalizedTOMLTableHeader(sectionHeader) ?? sectionHeader
+        guard let start = lines.firstIndex(where: { normalizedTOMLTableHeader($0) == targetHeader }) else {
             return nil
         }
 
         var section: [String] = []
         var index = start + 1
         while index < lines.count {
-            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+            if normalizedTOMLTableHeader(lines[index]) != nil {
                 break
             }
             section.append(lines[index])
             index += 1
         }
         return section
+    }
+
+    /// Canonical form of a TOML table header line, or nil for any other line.
+    ///
+    /// Equivalent spellings of the same table — a quoted bare key such as
+    /// `[mcp_servers."jts-terminal"]`, whitespace inside the brackets, or a
+    /// trailing comment — map to one value. Registration therefore replaces a
+    /// hand-written entry instead of appending a duplicate table, which TOML
+    /// readers reject, and a commented header is still seen as the start of
+    /// the next table, so its content is never swallowed by a replacement.
+    static func normalizedTOMLTableHeader(_ line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("[") else { return nil }
+        let isArrayTable = trimmed.hasPrefix("[[")
+        let opening = isArrayTable ? "[[" : "["
+        let closing = isArrayTable ? "]]" : "]"
+
+        var segments: [String] = []
+        var current = ""
+        var quote: Character?
+        var index = trimmed.index(trimmed.startIndex, offsetBy: opening.count)
+        var keyEnd: String.Index?
+        while index < trimmed.endIndex {
+            let character = trimmed[index]
+            if let activeQuote = quote {
+                current.append(character)
+                if character == activeQuote {
+                    quote = nil
+                }
+            } else if character == "\"" || character == "'" {
+                quote = character
+                current.append(character)
+            } else if character == "]" {
+                keyEnd = index
+                break
+            } else if character == "." {
+                segments.append(current)
+                current = ""
+            } else if character != " " && character != "\t" {
+                current.append(character)
+            }
+            index = trimmed.index(after: index)
+        }
+        guard let keyEnd, quote == nil else { return nil }
+        segments.append(current)
+
+        let afterKey = trimmed[keyEnd...]
+        guard afterKey.hasPrefix(closing) else { return nil }
+        let remainder = afterKey.dropFirst(closing.count).trimmingCharacters(in: .whitespaces)
+        guard remainder.isEmpty || remainder.hasPrefix("#") else { return nil }
+
+        let bareKeyCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+        let normalizedSegments = segments.map { segment -> String in
+            guard segment.count >= 2,
+                  let first = segment.first, let last = segment.last,
+                  first == last, first == "\"" || first == "'" else {
+                return segment
+            }
+            let inner = String(segment.dropFirst().dropLast())
+            guard !inner.isEmpty,
+                  inner.unicodeScalars.allSatisfy { bareKeyCharacters.contains($0) } else {
+                return segment
+            }
+            return inner
+        }
+        return opening + normalizedSegments.joined(separator: ".") + closing
     }
 
     static func tomlStringValue(for key: String, in section: [String]) -> String? {

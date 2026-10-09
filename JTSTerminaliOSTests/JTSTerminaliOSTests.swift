@@ -175,6 +175,95 @@ struct JTSTerminaliOSTests {
 
         #expect(originalSession !== replacementSession)
     }
+
+    @Test func knownHostsTrustOnFirstUseAndRejectChangedKeys() {
+        let suiteName = "JTSTerminaliOSTests.known-hosts.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+        let replacementKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC"
+
+        guard case .untrusted(let firstChallenge) = MobileKnownHostsStore.evaluate(
+            host: "Server.Example.com",
+            port: 2222,
+            presentedKey: firstKey,
+            defaults: defaults
+        ) else {
+            Issue.record("An unknown host key must not be trusted automatically.")
+            return
+        }
+        #expect(firstChallenge.kind == .unknown)
+        #expect(firstChallenge.fingerprint == "SHA256:RXm/ruZ0eTzRXKwi1AQEDynB0VgHQ2ac9KPSFdf/YnA")
+        #expect(firstChallenge.keyAlgorithm == "ssh-ed25519")
+
+        MobileKnownHostsStore.trust(firstChallenge, defaults: defaults)
+        #expect(MobileKnownHostsStore.evaluate(
+            host: "server.example.com",
+            port: 2222,
+            presentedKey: firstKey + " comment",
+            defaults: defaults
+        ) == .trusted)
+
+        guard case .untrusted(let changedChallenge) = MobileKnownHostsStore.evaluate(
+            host: "server.example.com",
+            port: 2222,
+            presentedKey: replacementKey,
+            defaults: defaults
+        ) else {
+            Issue.record("A different key for a trusted endpoint must be rejected.")
+            return
+        }
+        #expect(changedChallenge.kind == .changed(
+            previousFingerprint: "SHA256:RXm/ruZ0eTzRXKwi1AQEDynB0VgHQ2ac9KPSFdf/YnA"
+        ))
+        #expect(changedChallenge.fingerprint == "SHA256:baqJQcVDEweKmw1OiZxGooCG2MGxYtwsQQzzOstxmiA")
+
+        // Trust is bound to the port as well as the host.
+        if case .trusted = MobileKnownHostsStore.evaluate(
+            host: "server.example.com",
+            port: 22,
+            presentedKey: firstKey,
+            defaults: defaults
+        ) {
+            Issue.record("A key trusted for one port must not be trusted for another.")
+        }
+    }
+
+    @Test func hostKeyErrorsAskForVerificationInsteadOfAPassword() {
+        let challenge = MobileHostKeyChallenge(
+            host: "server.example.com",
+            port: 22,
+            openSSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB",
+            fingerprint: "SHA256:RXm/ruZ0eTzRXKwi1AQEDynB0VgHQ2ac9KPSFdf/YnA",
+            kind: .unknown
+        )
+        let error = MobileNativeSSHError.hostKeyNotTrusted(challenge)
+
+        #expect(error.hostKeyChallenge == challenge)
+        #expect(MobileCitadelClientFactory.credentialPromptReason(for: error) == nil)
+        #expect(MobileCitadelClientFactory.userFacingMessage(for: error).contains(challenge.fingerprint))
+    }
+
+    @Test func credentialsAreKeyedByProfileNotByEndpoint() {
+        let first = MobileServerProfile(name: "One", host: "server.example.com", username: "deploy")
+        let second = MobileServerProfile(name: "Two", host: "server.example.com", username: "deploy")
+        var edited = first
+        edited.host = "renamed.example.com"
+
+        #expect(
+            MobileCredentialStore.account(for: first, kind: .password)
+                != MobileCredentialStore.account(for: second, kind: .password)
+        )
+        #expect(
+            MobileCredentialStore.account(for: first, kind: .privateKey)
+                == MobileCredentialStore.account(for: edited, kind: .privateKey)
+        )
+        #expect(
+            MobileCredentialStore.legacyAccount(for: first, kind: .password)
+                == "deploy@server.example.com:22#password"
+        )
+    }
 }
 
 private struct TestAuthenticationError: LocalizedError {

@@ -1247,8 +1247,43 @@ enum MCPMenuActions {
 }
 
 struct PersistenceNotice: Equatable {
-    var title: String
-    var message: String
+    enum Kind: Equatable {
+        /// An unreadable store was moved aside and replaced by a new one.
+        case recovered(backupName: String)
+        /// No persistent store could be opened; changes are not saved.
+        case temporary(recoveryError: String)
+    }
+
+    var kind: Kind
+    var originalError: String
+
+    /// English text for diagnostics written to standard error.
+    var title: String { localizedTitle(language: .english) }
+    var message: String { localizedMessage(language: .english) }
+
+    func localizedTitle(language: AppLanguage) -> String {
+        switch kind {
+        case .recovered:
+            return language.localized("Local data store recovered", "已恢复本地数据存储")
+        case .temporary:
+            return language.localized("Server data is temporary", "服务器数据暂未保存")
+        }
+    }
+
+    func localizedMessage(language: AppLanguage) -> String {
+        switch kind {
+        case .recovered(let backupName):
+            return language.localized(
+                "JTS Terminal reset an unreadable local data store and created a fresh persistent store. The old store was moved to \(backupName). Original error: \(originalError)",
+                "JTS Terminal 重置了无法读取的本地数据存储并新建了存储。旧数据已移至 \(backupName)。原始错误：\(originalError)"
+            )
+        case .temporary(let recoveryError):
+            return language.localized(
+                "JTS Terminal persistent store failed, using a temporary in-memory store. Server changes will not persist until this is fixed. Original error: \(originalError). Recovery error: \(recoveryError)",
+                "JTS Terminal 无法打开持久存储，正在使用临时内存存储。在问题解决前，服务器更改不会被保存。原始错误：\(originalError)。恢复错误：\(recoveryError)"
+            )
+        }
+    }
 }
 
 enum ModelContainerFactory {
@@ -1285,8 +1320,8 @@ enum ModelContainerFactory {
                 let container = try makePersistentContainer()
                 if let backupURL {
                     let notice = PersistenceNotice(
-                        title: "Local data store recovered",
-                        message: "JTS Terminal reset an unreadable local data store and created a fresh persistent store. The old store was moved to \(backupURL.lastPathComponent). Original error: \(firstError.localizedDescription)"
+                        kind: .recovered(backupName: backupURL.lastPathComponent),
+                        originalError: firstError.localizedDescription
                     )
                     persistenceNotice = notice
                     fputs("\(notice.title): \(notice.message)\n", stderr)
@@ -1294,8 +1329,8 @@ enum ModelContainerFactory {
                 return container
             } catch {
                 let notice = PersistenceNotice(
-                    title: "Server data is temporary",
-                    message: "JTS Terminal persistent store failed, using a temporary in-memory store. Server changes will not persist until this is fixed. Original error: \(firstError.localizedDescription). Recovery error: \(error.localizedDescription)"
+                    kind: .temporary(recoveryError: error.localizedDescription),
+                    originalError: firstError.localizedDescription
                 )
                 persistenceNotice = notice
                 fputs("\(notice.title): \(notice.message)\n", stderr)

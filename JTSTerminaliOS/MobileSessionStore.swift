@@ -22,7 +22,11 @@ final class MobileSessionStore: ObservableObject {
         if resetPersistentState {
             userDefaults.removeObject(forKey: Self.storageKey)
         }
+        if resetPersistentState {
+            userDefaults.removeObject(forKey: MobileCredentialStore.migrationDefaultsKey)
+        }
         load()
+        MobileCredentialStore.migrateLegacySecrets(for: profiles, defaults: userDefaults)
         selectedProfileID = profiles.first?.id
     }
 

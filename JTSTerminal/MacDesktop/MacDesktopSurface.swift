@@ -81,8 +81,12 @@ final class MacDesktopSurfaceView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        setAccessibilityLabel("远程 Mac 桌面")
-        setAccessibilityHelp("点击画面控制对方 Mac，按 Control Option Escape 释放键盘。")
+        let language = AppLanguage.stored
+        setAccessibilityLabel(language.localized("Remote Mac desktop", "远程 Mac 桌面"))
+        setAccessibilityHelp(language.localized(
+            "Click the image to control the other Mac. Press Control-Option-Escape to release the keyboard.",
+            "点击画面控制对方 Mac，按 Control Option Escape 释放键盘。"
+        ))
         NotificationCenter.default.addObserver(self, selector: #selector(applicationDeactivated), name: NSApplication.didResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(windowDeactivated(_:)), name: NSWindow.didResignKeyNotification, object: nil)
     }

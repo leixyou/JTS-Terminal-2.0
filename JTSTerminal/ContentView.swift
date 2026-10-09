@@ -36,13 +36,18 @@ enum AppIconProvider {
 private struct AppIconMark: View {
     let size: CGFloat
 
+    /// The macOS icon follows Apple's grid: an 824 pt tile with a transparent
+    /// margin on a 1024 pt canvas. Enlarge it so the tile fills the mark.
+    private static let tileScale: CGFloat = 1024 / 824
+
     var body: some View {
         Image(nsImage: AppIconProvider.image)
             .resizable()
             .interpolation(.high)
             .aspectRatio(contentMode: .fit)
+            .frame(width: size * Self.tileScale, height: size * Self.tileScale)
             .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: size * 0.23, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
             .accessibilityHidden(true)
     }
 }
@@ -74,6 +79,7 @@ struct ContentView: View {
     @State private var transientNewSessionID: PersistentIdentifier?
     @State private var serverPropertiesWindow: NSWindow?
     @State private var serverPropertiesWindowDelegate: ServerPropertiesWindowDelegate?
+    @State private var serverPropertiesSessionID: PersistentIdentifier?
     @State private var isShowingNewGroupPrompt = false
     @State private var pendingNewGroupName = ""
     @AppStorage(WelcomeGuidePolicy.storageKey) private var hasSeenWelcomeGuide = false
@@ -280,17 +286,18 @@ struct ContentView: View {
         }
         .background(MainWindowGuard())
         .alert(
-            persistenceNotice?.title ?? "Data store notice",
+            persistenceNotice?.localizedTitle(language: appLanguage)
+                ?? appLanguage.localized("Data store notice", "数据存储提示"),
             isPresented: Binding(
                 get: { persistenceNotice != nil },
                 set: { if !$0 { persistenceNotice = nil } }
             )
         ) {
-            Button("OK", role: .cancel) {
+            Button(appLanguage.localized("OK", "好"), role: .cancel) {
                 persistenceNotice = nil
             }
         } message: {
-            Text(persistenceNotice?.message ?? "")
+            Text(persistenceNotice?.localizedMessage(language: appLanguage) ?? "")
         }
         .sheet(
             isPresented: Binding(
@@ -485,17 +492,34 @@ struct ContentView: View {
     #endif
 
     private func deleteSessions(_ sessionsToDelete: [RemoteSession]) {
+        let deletedIDs = Set(sessionsToDelete.map(\.persistentModelID))
+        // The properties window must not keep editing a deleted model.
+        if let editingID = serverPropertiesSessionID, deletedIDs.contains(editingID) {
+            guard closeServerPropertiesWindow(clearDetachedDraft: false) else {
+                NSSound.beep()
+                return
+            }
+        }
+        if let transientNewSessionID, deletedIDs.contains(transientNewSessionID) {
+            self.transientNewSessionID = nil
+        }
+        if let detachedDraftPropertiesSessionID, deletedIDs.contains(detachedDraftPropertiesSessionID) {
+            self.detachedDraftPropertiesSessionID = nil
+        }
         for session in sessionsToDelete {
             if selectedSessionID == session.persistentModelID {
                 selectedSessionID = nil
             }
             terminalWorkspaceStore.removeWorkspace(for: session.persistentModelID)
+            tunnelManagerStore.removeManager(for: session.persistentModelID)
+            remoteFilesWorkspaceStore.removeWorkspace(for: session.persistentModelID)
             #if ENABLE_RDP_2
             ApplicationWorkspaceRuntime.shared.macDesktops.remove(for: session.persistentModelID)
             MacSystemScreenSharingStore.shared.remove(targetID: session.targetID)
             #endif
             modelContext.delete(session)
         }
+        try? modelContext.save()
         reconcileSelectedSessionIfNeeded()
     }
 
@@ -674,6 +698,7 @@ struct ContentView: View {
         }
 
         let closeGuard = ServerPropertiesWindowCloseGuard()
+        let isTransientDraft = transientNewSessionID == session.persistentModelID
         let content = ServerPropertiesSheet(
             session: session,
             allSessions: sessions,
@@ -682,6 +707,9 @@ struct ContentView: View {
             openInteractive: {
                 closeServerPropertiesWindow()
                 openInteractive(for: session)
+            },
+            deleteServer: isTransientDraft ? nil : {
+                deleteSessions([session])
             }
         )
         .environment(\.modelContext, modelContext)
@@ -715,6 +743,7 @@ struct ContentView: View {
 
         serverPropertiesWindowDelegate = delegate
         serverPropertiesWindow = window
+        serverPropertiesSessionID = session.persistentModelID
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -745,6 +774,7 @@ struct ContentView: View {
     ) {
         serverPropertiesWindow = nil
         serverPropertiesWindowDelegate = nil
+        serverPropertiesSessionID = nil
         guard clearDetachedDraft else { return }
 
         discardTransientNewSessionIfNeeded()
@@ -938,8 +968,8 @@ struct WelcomeGuideItem: Identifiable, Equatable {
                 symbol: "server.rack",
                 title: language.localized("Choose a connection", "选择连接方式"),
                 message: language.localized(
-                    "Create an SSH profile with a key, ssh-agent, or encrypted local password; a Local Shell profile needs no remote host; or add a Windows RDP profile.",
-                    "可创建使用密钥、ssh-agent 或本地加密密码的 SSH 配置；本地 Shell 无需远程主机；也可以添加 Windows RDP 配置。"
+                    "Create an SSH profile with a key file, the macOS ssh-agent, or an encrypted local password; a Local Shell profile needs no remote host; or add a Windows RDP profile.",
+                    "可创建使用私钥文件、macOS 自带 ssh-agent 或本地加密密码的 SSH 配置；本地 Shell 无需远程主机；也可以添加 Windows RDP 配置。"
                 )
             ),
             WelcomeGuideItem(
@@ -1382,6 +1412,7 @@ private struct SessionSidebar: View {
     let selectSession: (RemoteSession) -> Void
     let openProperties: (RemoteSession) -> Void
     let openTerminal: (RemoteSession) -> Void
+    @State private var sessionsPendingDeletion: [RemoteSession] = []
     private var filteredSessions: [RemoteSession] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return sessions }
@@ -1478,10 +1509,19 @@ private struct SessionSidebar: View {
                                 } label: {
                                     Label(language.localized("Server Properties", "服务器属性"), systemImage: "info.circle")
                                 }
+
+                                Divider()
+
+                                Button(role: .destructive) {
+                                    sessionsPendingDeletion = [session]
+                                } label: {
+                                    Label(language.localized("Delete Server…", "删除服务器…"), systemImage: "trash")
+                                }
+                                .accessibilityIdentifier("server-row-delete-button")
                             }
                         }
                         .onDelete { offsets in
-                            deleteSessions(offsets.map { group.sessions[$0] })
+                            sessionsPendingDeletion = offsets.map { group.sessions[$0] }
                         }
                     } header: {
                         HStack(spacing: 6) {
@@ -1543,6 +1583,39 @@ private struct SessionSidebar: View {
             .padding(16)
         }
         .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
+        .confirmationDialog(
+            deletionTitle,
+            isPresented: Binding(
+                get: { !sessionsPendingDeletion.isEmpty },
+                set: { if !$0 { sessionsPendingDeletion = [] } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(language.localized("Delete", "删除"), role: .destructive) {
+                let pending = sessionsPendingDeletion
+                sessionsPendingDeletion = []
+                deleteSessions(pending)
+            }
+            Button(language.localized("Cancel", "取消"), role: .cancel) {
+                sessionsPendingDeletion = []
+            }
+        } message: {
+            Text(language.localized(
+                "Open terminals, tunnels and desktops of this server are closed. Passwords saved in the local vault are kept for other profiles that use the same account.",
+                "该服务器打开的终端、隧道和桌面会被关闭。本地密码库中保存的密码会保留，供使用同一账号的其他配置继续使用。"
+            ))
+        }
+    }
+
+    private var deletionTitle: String {
+        if sessionsPendingDeletion.count == 1, let session = sessionsPendingDeletion.first {
+            let name = session.name.nilIfBlank ?? language.localized("Unnamed Server", "未命名服务器")
+            return language.localized("Delete “\(name)”?", "删除“\(name)”？")
+        }
+        return language.localized(
+            "Delete \(sessionsPendingDeletion.count) servers?",
+            "删除 \(sessionsPendingDeletion.count) 台服务器？"
+        )
     }
 
     private var sidebarSubtitle: String {
@@ -1682,70 +1755,6 @@ private struct SessionRow: View {
         case .rdp:
             return "desktopcomputer"
         }
-    }
-}
-
-private struct WorkspaceStatusStrip: View {
-    let session: RemoteSession
-    let sessions: [RemoteSession]
-
-    var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 14)], spacing: 14) {
-            StatusTile(
-                title: "Session",
-                value: session.isConnectable ? "Connectable" : "Incomplete",
-                symbol: session.isConnectable ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
-                tint: session.isConnectable ? AppTheme.signal : .orange
-            )
-            StatusTile(
-                title: "Inventory",
-                value: "\(sessions.count) hosts",
-                symbol: "server.rack",
-                tint: AppTheme.ember
-            )
-            StatusTile(
-                title: "Protocol",
-                value: session.enableX11Forwarding ? "SSH + X11" : "SSH",
-                symbol: "network",
-                tint: .cyan
-            )
-            StatusTile(
-                title: "Workspace",
-                value: session.remotePath.nilIfBlank ?? "~",
-                symbol: "folder.fill",
-                tint: .mint
-            )
-        }
-    }
-}
-
-private struct StatusTile: View {
-    let title: String
-    let value: String
-    let symbol: String
-    let tint: Color
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.headline)
-                .foregroundStyle(tint)
-                .frame(width: 34, height: 34)
-                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title.uppercased())
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.headline)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .panelBackground(cornerRadius: 18)
     }
 }
 
@@ -2658,115 +2667,6 @@ private struct WorkspaceToolbar: View {
     }
 }
 
-private struct FeatureRail: View {
-    @Environment(\.appLanguage) private var language
-    @Binding var selectedFeature: WorkspaceFeature
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(language.localized("Features", "功能"))
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.top, 12)
-
-            ForEach(WorkspaceFeature.selectableCases) { feature in
-                FeatureRailButton(
-                    feature: feature,
-                    isSelected: selectedFeature == feature
-                ) {
-                    selectedFeature = feature
-                }
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-        .frame(width: 116)
-        .background(AppTheme.sidebar)
-    }
-}
-
-private struct FeatureRailButton: View {
-    @Environment(\.appLanguage) private var language
-    let feature: WorkspaceFeature
-    let isSelected: Bool
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(backgroundStyle)
-                    .shadow(
-                        color: isSelected ? AppTheme.focusGreen.opacity(0.18) : .clear,
-                        radius: 8,
-                        x: 0,
-                        y: 4
-                    )
-
-                if isSelected {
-                    Capsule(style: .continuous)
-                        .fill(AppTheme.focusGreen)
-                        .frame(width: 3, height: 18)
-                        .padding(.leading, 3)
-                        .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
-                }
-
-                HStack(spacing: 7) {
-                    Image(systemName: feature.symbol)
-                        .font(.caption.weight(isSelected ? .bold : .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(isSelected ? AppTheme.focusGreen : (isHovering ? .primary : .secondary))
-                        .frame(width: 16)
-
-                    Text(feature.title(language: language))
-                        .font(.caption.weight(isSelected ? .bold : .semibold))
-                        .foregroundStyle(isSelected ? .primary : (isHovering ? .primary : .secondary))
-                        .lineLimit(1)
-
-                    Spacer()
-                }
-                .padding(.leading, isSelected ? 12 : 8)
-                .padding(.trailing, 8)
-                .padding(.vertical, 7)
-            }
-            .frame(height: 34)
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(borderStyle, lineWidth: isSelected ? 1.2 : 0.8)
-            }
-        }
-        .buttonStyle(FeatureRailPressStyle())
-        .onHover { isHovering = $0 }
-        .animation(.snappy(duration: 0.16), value: isSelected)
-        .animation(.snappy(duration: 0.12), value: isHovering)
-        .accessibilityIdentifier("feature-\(feature.rawValue)-button")
-    }
-
-    private var backgroundStyle: Color {
-        if isSelected {
-            return AppTheme.focusGreenSoft
-        }
-        if isHovering {
-            return Color.primary.opacity(0.055)
-        }
-        return Color.clear
-    }
-
-    private var borderStyle: Color {
-        if isSelected {
-            return AppTheme.focusGreenBorder
-        }
-        if isHovering {
-            return Color.primary.opacity(0.08)
-        }
-        return Color.clear
-    }
-}
-
 struct ConfigureServerPrompt: View {
     @Environment(\.appLanguage) private var language
     let openServerProperties: () -> Void
@@ -3363,7 +3263,7 @@ private struct SessionEditor: View {
                 }
 
                 LabeledContent(language.localized("SSH port", "SSH 端口")) {
-                    TextField(language.localized("SSH port", "SSH 端口"), value: $draft.port, format: .number)
+                    TextField(language.localized("SSH port", "SSH 端口"), value: $draft.port, format: .number.grouping(.never))
                         .labelsHidden()
                         .frame(width: 96)
                         .textFieldStyle(.roundedBorder)
@@ -3374,19 +3274,49 @@ private struct SessionEditor: View {
             passwordFields
 
             LabeledContent(language.localized("Identity file", "私钥文件")) {
-                HStack(spacing: 8) {
-                    TextField(language.localized("Optional, e.g. ~/.ssh/id_ed25519", "可选，例如 ~/.ssh/id_ed25519"), text: $draft.identityFile)
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("session-identity-field")
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        TextField(language.localized("Optional, e.g. ~/.ssh/id_ed25519", "可选，例如 ~/.ssh/id_ed25519"), text: $draft.identityFile)
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("session-identity-field")
 
-                    Button {
-                        chooseIdentityFile()
-                    } label: {
-                        Label(language.localized("Browse", "浏览"), systemImage: "folder")
+                        Button {
+                            chooseIdentityFile()
+                        } label: {
+                            Label(language.localized("Browse", "浏览"), systemImage: "folder")
+                        }
+                        .accessibilityIdentifier("session-identity-browse-button")
+                        .help(language.localized("Choose a private key file", "选择 SSH 私钥文件"))
                     }
-                    .accessibilityIdentifier("session-identity-browse-button")
-                    .help(language.localized("Choose a private key file", "选择 SSH 私钥文件"))
+
+                    if !draft.identityFile.isBlank,
+                       !SSHIdentityFileAccess.hasStoredAccess(for: draft.identityFile) {
+                        Label(
+                            language.localized(
+                                "Choose this key with Browse so JTS Terminal keeps permission to read it after relaunch.",
+                                "请用“浏览”选择此私钥，JTS Terminal 才能在重新打开后继续读取它。"
+                            ),
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("session-identity-access-hint")
+                    }
+
+                    if case .blockedBySandbox(let socketPath) = SSHAgentSandboxPolicy.availability() {
+                        Label(
+                            language.localized(
+                                "The ssh-agent at \(socketPath) can't be reached from App Sandbox, so its keys are not offered. Load the key into the macOS ssh-agent with ssh-add, or choose the key file with Browse.",
+                                "App Sandbox 无法访问位于 \(socketPath) 的 ssh-agent，其中的密钥不会被使用。请用 ssh-add 将密钥载入 macOS 自带的 ssh-agent，或通过“浏览”选择私钥文件。"
+                            ),
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("session-ssh-agent-sandbox-hint")
+                    }
                 }
             }
 
@@ -3437,7 +3367,7 @@ private struct SessionEditor: View {
                 }
 
                 LabeledContent(language.localized("RDP port", "RDP 端口")) {
-                    TextField(language.localized("RDP port", "RDP 端口"), value: $draft.port, format: .number)
+                    TextField(language.localized("RDP port", "RDP 端口"), value: $draft.port, format: .number.grouping(.never))
                         .labelsHidden()
                         .frame(width: 96)
                         .textFieldStyle(.roundedBorder)
@@ -3454,8 +3384,8 @@ private struct SessionEditor: View {
 
             Label(
                 language.localized(
-                    "Direct LAN connection only. JTS Terminal does not require Tailscale, an SSH alias, RD Gateway, port mapping, or a cloud relay.",
-                    "仅限局域网直连。JTS Terminal 不需要 Tailscale、SSH alias、RD Gateway、端口映射或云中继。"
+                    "Connects directly to the host above; Tailscale, an SSH alias, RD Gateway or port mapping are not required. For a Windows PC outside this network, pair its Windows Companion through a relay station.",
+                    "直接连接上面的主机，无需 Tailscale、SSH 别名、RD Gateway 或端口映射。如需连接不在此网络中的 Windows 电脑，请通过中转站配对它的 Windows Companion。"
                 ),
                 systemImage: "network"
             )
@@ -3470,7 +3400,7 @@ private struct SessionEditor: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 LabeledContent(language.localized("Width", "宽度")) {
-                    TextField("1920", value: $draft.rdpDesktopWidth, format: .number)
+                    TextField("1920", value: $draft.rdpDesktopWidth, format: .number.grouping(.never))
                         .labelsHidden()
                         .frame(width: 88)
                         .textFieldStyle(.roundedBorder)
@@ -3481,7 +3411,7 @@ private struct SessionEditor: View {
                     .foregroundStyle(.secondary)
 
                 LabeledContent(language.localized("Height", "高度")) {
-                    TextField("1080", value: $draft.rdpDesktopHeight, format: .number)
+                    TextField("1080", value: $draft.rdpDesktopHeight, format: .number.grouping(.never))
                         .labelsHidden()
                         .frame(width: 88)
                         .textFieldStyle(.roundedBorder)
@@ -4450,6 +4380,9 @@ private struct SessionEditor: View {
         )
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        // Keep read access across launches and in the MCP process; App
+        // Sandbox otherwise denies ssh the key after this launch.
+        SSHIdentityFileAccess.remember(url)
         draft.identityFile = SSHIdentityFileSelectionPolicy.displayPath(for: url)
     }
 }
@@ -4526,23 +4459,27 @@ private struct ServerPropertiesSheet: View {
     let closeGuard: ServerPropertiesWindowCloseGuard
     let close: () -> Void
     let openInteractive: () -> Void
+    let deleteServer: (() -> Void)?
     @State private var draft: ServerPropertiesDraft
     @State private var saveStatus = ""
     @State private var credentialOperationState = CredentialOperationState()
     @State private var credentialHasUnsavedInput = false
+    @State private var isConfirmingDeletion = false
 
     init(
         session: RemoteSession,
         allSessions: [RemoteSession],
         closeGuard: ServerPropertiesWindowCloseGuard,
         close: @escaping () -> Void,
-        openInteractive: @escaping () -> Void
+        openInteractive: @escaping () -> Void,
+        deleteServer: (() -> Void)? = nil
     ) {
         self.session = session
         self.allSessions = allSessions
         self.closeGuard = closeGuard
         self.close = close
         self.openInteractive = openInteractive
+        self.deleteServer = deleteServer
         _draft = State(initialValue: ServerPropertiesDraft(session: session))
     }
 
@@ -4563,6 +4500,18 @@ private struct ServerPropertiesSheet: View {
                 }
 
                 Spacer()
+
+                if deleteServer != nil {
+                    Button(role: .destructive) {
+                        isConfirmingDeletion = true
+                    } label: {
+                        Label(language.localized("Delete Server…", "删除服务器…"), systemImage: "trash")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(credentialOperationState.isRunning)
+                    .accessibilityIdentifier("server-properties-delete-button")
+                }
 
                 Button {
                     guard !credentialOperationState.isRunning else { return }
@@ -4644,6 +4593,22 @@ private struct ServerPropertiesSheet: View {
         .background(WorkspaceBackground())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("server-properties-content")
+        .confirmationDialog(
+            language.localized("Delete this server?", "删除此服务器？"),
+            isPresented: $isConfirmingDeletion,
+            titleVisibility: .visible
+        ) {
+            Button(language.localized("Delete", "删除"), role: .destructive) {
+                guard !credentialOperationState.isRunning else { return }
+                deleteServer?()
+            }
+            Button(language.localized("Cancel", "取消"), role: .cancel) {}
+        } message: {
+            Text(language.localized(
+                "Open terminals, tunnels and desktops of this server are closed. Unsaved changes in this window are discarded.",
+                "该服务器打开的终端、隧道和桌面会被关闭，本窗口中未保存的更改将被丢弃。"
+            ))
+        }
     }
 
     private func save() {
@@ -5341,6 +5306,19 @@ enum RemoteFileSortMode: String, CaseIterable, Identifiable {
     case modified = "Modified"
 
     var id: String { rawValue }
+
+    func title(language: AppLanguage) -> String {
+        switch self {
+        case .name:
+            return language.localized("Name", "名称")
+        case .type:
+            return language.localized("Type", "类型")
+        case .size:
+            return language.localized("Size", "大小")
+        case .modified:
+            return language.localized("Modified", "修改时间")
+        }
+    }
 }
 
 @MainActor
@@ -5421,9 +5399,14 @@ final class RemoteFilesWorkspaceStore: ObservableObject {
         workspaces[sessionID] = workspace
         return workspace
     }
+
+    func removeWorkspace(for sessionID: PersistentIdentifier) {
+        workspaces.removeValue(forKey: sessionID)
+    }
 }
 
 private struct RemoteFilesPanel: View {
+    @Environment(\.appLanguage) private var language
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \RemoteTransferTask.updatedAt, order: .reverse) private var transferTasks: [RemoteTransferTask]
     @Bindable var session: RemoteSession
@@ -5431,6 +5414,9 @@ private struct RemoteFilesPanel: View {
     @ObservedObject var transferQueueManager: RemoteTransferQueueManager
     let openServerProperties: () -> Void
     @State private var isTransferHistoryPresented = false
+    @State private var isCreatingFolder = false
+    @State private var isRenaming = false
+    @State private var entryPendingDeletion: RemoteFileEntry?
 
     private let sftpTransport = RemoteSFTPTransport()
     private let remoteCommandRunner = AuthenticatedRemoteCommandRunner()
@@ -5483,7 +5469,7 @@ private struct RemoteFilesPanel: View {
                 Button {
                     goToParent()
                 } label: {
-                    Label("Parent", systemImage: "chevron.up")
+                    Label(language.localized("Parent", "上级"), systemImage: "chevron.up")
                 }
                 .disabled(!session.isConnectable || workspace.isRunning)
 
@@ -5491,34 +5477,41 @@ private struct RemoteFilesPanel: View {
                     session.remotePath = "~"
                     listDirectory()
                 } label: {
-                    Label("Home", systemImage: "house")
+                    Label(language.localized("Home", "主目录"), systemImage: "house")
                 }
                 .disabled(!session.isConnectable || workspace.isRunning)
 
-                TextField("Remote path", text: $session.remotePath)
+                TextField(language.localized("Remote path", "远程路径"), text: $session.remotePath)
                     .font(.system(.body, design: .monospaced))
                     .onSubmit {
                         listDirectory()
                     }
                     .accessibilityIdentifier("remote-files-path-field")
 
-                Button("Go") {
+                Button(language.localized("Go", "前往")) {
                     listDirectory()
                 }
                 .disabled(!session.isConnectable || workspace.isRunning)
 
-                Picker("Sort", selection: $workspace.sortMode) {
+                Picker(language.localized("Sort", "排序"), selection: $workspace.sortMode) {
                     ForEach(RemoteFileSortMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        Text(mode.title(language: language)).tag(mode)
                     }
                 }
                 .pickerStyle(.menu)
-                .frame(width: 96)
+                .labelsHidden()
+                .fixedSize()
+                .help(language.localized("Sort", "排序"))
 
                 Button {
                     listDirectory()
                 } label: {
-                    Label(workspace.isRunning ? "Loading" : "Refresh", systemImage: "arrow.clockwise")
+                    Label(
+                        workspace.isRunning
+                            ? language.localized("Loading", "加载中")
+                            : language.localized("Refresh", "刷新"),
+                        systemImage: "arrow.clockwise"
+                    )
                 }
                 .disabled(!session.isConnectable || workspace.isRunning)
             }
@@ -5530,83 +5523,81 @@ private struct RemoteFilesPanel: View {
                 Button {
                     uploadIntoCurrentDirectory()
                 } label: {
-                    Label("Upload", systemImage: "square.and.arrow.up")
+                    Label(language.localized("Upload", "上传"), systemImage: "square.and.arrow.up")
                 }
                 .disabled(!session.isConnectable || workspace.isRunning)
 
                 Button {
                     downloadSelected()
                 } label: {
-                    Label("Download", systemImage: "square.and.arrow.down")
+                    Label(language.localized("Download", "下载"), systemImage: "square.and.arrow.down")
                 }
                 .disabled(selectedEntry == nil || workspace.isRunning)
 
                 Button {
                     openSelectedForEditing()
                 } label: {
-                    Label("Edit", systemImage: "pencil")
+                    Label(language.localized("Edit", "编辑"), systemImage: "pencil")
                 }
                 .disabled(selectedEntry?.isRegularFile != true || workspace.isRunning)
 
                 Menu {
                     Button {
-                        makeDirectory()
+                        workspace.newFolderName = ""
+                        isCreatingFolder = true
                     } label: {
-                        Label("New Folder: \(workspace.newFolderName)", systemImage: "folder.badge.plus")
+                        Label(language.localized("New Folder…", "新建文件夹…"), systemImage: "folder.badge.plus")
                     }
-                    .disabled(!session.isConnectable || workspace.newFolderName.isBlank || workspace.isRunning)
+                    .disabled(!session.isConnectable || workspace.isRunning)
 
                     Button {
-                        renameSelected()
+                        beginRename(selectedEntry)
                     } label: {
-                        Label("Rename to: \(workspace.renameTargetName.nilIfBlank ?? "selected item")", systemImage: "pencil")
+                        Label(language.localized("Rename…", "重命名…"), systemImage: "pencil")
                     }
-                    .disabled(selectedEntry == nil || workspace.renameTargetName.isBlank || workspace.isRunning)
+                    .disabled(selectedEntry == nil || workspace.isRunning)
 
                     Button {
                         uploadEditedCopy()
                     } label: {
-                        Label("Sync Edited Copy", systemImage: "arrow.up.doc")
+                        Label(language.localized("Sync Edited Copy", "同步编辑副本"), systemImage: "arrow.up.doc")
                     }
                     .disabled(workspace.editDraft == nil || workspace.isRunning)
 
                     Button {
                         revealEditedCopy()
                     } label: {
-                        Label("Reveal Local Edit Copy", systemImage: "folder")
+                        Label(language.localized("Reveal Local Edit Copy", "在访达中显示编辑副本"), systemImage: "folder")
                     }
                     .disabled(workspace.editDraft == nil)
 
                     Divider()
 
                     Button(role: .destructive) {
-                        deleteSelected()
+                        entryPendingDeletion = selectedEntry
                     } label: {
-                        Label("Delete Selected", systemImage: "trash")
+                        Label(language.localized("Delete…", "删除…"), systemImage: "trash")
                     }
                     .disabled(selectedEntry == nil || workspace.isRunning)
                 } label: {
-                    Label("More", systemImage: "ellipsis.circle")
+                    Label(language.localized("More", "更多"), systemImage: "ellipsis.circle")
                 }
+                .fixedSize()
 
-                TextField("New folder", text: $workspace.newFolderName)
-                    .frame(width: 120)
-
-                TextField("Rename to", text: $workspace.renameTargetName)
-                    .frame(width: 150)
-
-                Spacer()
+                Spacer(minLength: 8)
 
                 Text(statusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(statusText)
             }
             .padding(.horizontal, 2)
 
             ZStack {
                 Table(sortedEntries, selection: $workspace.selectedEntryID) {
-                TableColumn("Name") { entry in
+                TableColumn(language.localized("Name", "名称")) { entry in
 	                    HStack {
 	                        Image(systemName: iconName(for: entry))
 	                            .foregroundStyle(iconColor(for: entry))
@@ -5621,18 +5612,18 @@ private struct RemoteFilesPanel: View {
 	                        fileContextMenu(for: entry)
 	                    }
 	                }
-                TableColumn("Type", value: \.typeLabel)
+                TableColumn(language.localized("Type", "类型"), value: \.typeLabel)
                     .width(80)
-                TableColumn("Size") { entry in
+                TableColumn(language.localized("Size", "大小")) { entry in
                     Text(entry.isDirectory ? "--" : entry.formattedSize)
                         .foregroundStyle(.secondary)
                 }
                 .width(90)
-                TableColumn("Owner", value: \.owner)
+                TableColumn(language.localized("Owner", "所有者"), value: \.owner)
                     .width(90)
-                TableColumn("Permissions", value: \.permissions)
+                TableColumn(language.localized("Permissions", "权限"), value: \.permissions)
                     .width(115)
-                TableColumn("Modified", value: \.modified)
+                TableColumn(language.localized("Modified", "修改时间"), value: \.modified)
                     .width(min: 150, ideal: 180)
                 }
                 .contextMenu {
@@ -5674,7 +5665,7 @@ private struct RemoteFilesPanel: View {
                         Button {
                             openServerProperties()
                         } label: {
-                            Label("Server Properties", systemImage: "info.circle")
+                            Label(language.localized("Server Properties", "服务器属性"), systemImage: "info.circle")
                         }
                         .buttonStyle(.bordered)
                     }
@@ -5693,7 +5684,7 @@ private struct RemoteFilesPanel: View {
                 Spacer()
 
                 if let editDraft = workspace.editDraft {
-                    Text("Editing: \(editDraft.remoteName)")
+                    Text(language.localized("Editing: \(editDraft.remoteName)", "正在编辑：\(editDraft.remoteName)"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -5723,6 +5714,62 @@ private struct RemoteFilesPanel: View {
                 listDirectory()
             }
         }
+        .alert(language.localized("New Folder", "新建文件夹"), isPresented: $isCreatingFolder) {
+            TextField(language.localized("Folder name", "文件夹名称"), text: $workspace.newFolderName)
+            Button(language.localized("Create", "创建")) {
+                guard !workspace.newFolderName.isBlank else { return }
+                makeDirectory()
+            }
+            Button(language.localized("Cancel", "取消"), role: .cancel) {}
+        } message: {
+            Text(language.localized(
+                "Creates the folder in \(session.remotePath.nilIfBlank ?? "~").",
+                "在 \(session.remotePath.nilIfBlank ?? "~") 中创建文件夹。"
+            ))
+        }
+        .alert(language.localized("Rename", "重命名"), isPresented: $isRenaming) {
+            TextField(language.localized("New name", "新名称"), text: $workspace.renameTargetName)
+            Button(language.localized("Rename", "重命名")) {
+                guard !workspace.renameTargetName.isBlank,
+                      workspace.renameTargetName != selectedEntry?.name else { return }
+                renameSelected()
+            }
+            Button(language.localized("Cancel", "取消"), role: .cancel) {}
+        }
+        .confirmationDialog(
+            language.localized("Delete this remote item?", "删除此远程项目？"),
+            isPresented: Binding(
+                get: { entryPendingDeletion != nil },
+                set: { if !$0 { entryPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: entryPendingDeletion
+        ) { entry in
+            Button(language.localized("Delete \(entry.displayName)", "删除 \(entry.displayName)"), role: .destructive) {
+                entryPendingDeletion = nil
+                delete(entry)
+            }
+            Button(language.localized("Cancel", "取消"), role: .cancel) {
+                entryPendingDeletion = nil
+            }
+        } message: { entry in
+            Text(entry.isDirectory
+                ? language.localized(
+                    "The folder is removed from the server. This cannot be undone.",
+                    "该文件夹将从服务器上删除，此操作无法撤销。"
+                )
+                : language.localized(
+                    "The file is removed from the server. This cannot be undone.",
+                    "该文件将从服务器上删除，此操作无法撤销。"
+                ))
+        }
+    }
+
+    private func beginRename(_ entry: RemoteFileEntry?) {
+        guard let entry else { return }
+        workspace.selectedEntryID = entry.id
+        workspace.renameTargetName = entry.name
+        isRenaming = true
     }
 
     @ViewBuilder
@@ -5733,7 +5780,7 @@ private struct RemoteFilesPanel: View {
                     Button {
                         isTransferHistoryPresented.toggle()
                     } label: {
-                        Label("Transfer Queue", systemImage: "arrow.up.arrow.down.circle")
+                        Label(language.localized("Transfer Queue", "传输队列"), systemImage: "arrow.up.arrow.down.circle")
                             .font(.caption.weight(.semibold))
 	                    }
 	                    .buttonStyle(.plain)
@@ -5754,7 +5801,10 @@ private struct RemoteFilesPanel: View {
 	                }
 
 	                if visibleTransferQueueTasks.isEmpty {
-                    Text("No active transfers. Click Transfer Queue to view this server's transfer history.")
+                    Text(language.localized(
+                        "No active transfers. Click Transfer Queue to view this server's transfer history.",
+                        "当前没有进行中的传输。点击“传输队列”查看此服务器的传输记录。"
+                    ))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)
@@ -5776,14 +5826,20 @@ private struct RemoteFilesPanel: View {
         let active = visibleTransferQueueTasks.count
 
         if active > 0 {
-            return "\(active) active · \(sessionTransferHistory.count) history"
+            return language.localized(
+                "\(active) active · \(sessionTransferHistory.count) history",
+                "\(active) 个进行中 · \(sessionTransferHistory.count) 条记录"
+            )
         }
 
         if completedDownloads > 0 {
-            return "\(completedDownloads) downloaded"
+            return language.localized("\(completedDownloads) downloaded", "已下载 \(completedDownloads) 个")
         }
 
-        return "\(sessionTransferHistory.count) history"
+        return language.localized(
+            "\(sessionTransferHistory.count) history",
+            "\(sessionTransferHistory.count) 条记录"
+        )
     }
 
     private func transferQueueRow(_ task: RemoteTransferTask) -> some View {
@@ -5793,7 +5849,7 @@ private struct RemoteFilesPanel: View {
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(task.direction.label): \(task.displayName)")
+                Text("\(transferDirectionLabel(task.direction)): \(task.displayName)")
                     .font(.caption)
                     .lineLimit(1)
                 Text(task.summary)
@@ -5820,7 +5876,7 @@ private struct RemoteFilesPanel: View {
             }
 
             if canResumeTransfer(task) {
-                Button("Resume") {
+                Button(language.localized("Resume", "继续")) {
                     transferQueueManager.enqueue(task, session: session, context: modelContext)
                 }
                 .disabled(!session.isConnectable)
@@ -5836,7 +5892,7 @@ private struct RemoteFilesPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Transfer History")
+                    Text(language.localized("Transfer History", "传输记录"))
                         .font(.headline)
                     Text(session.name)
                         .font(.caption)
@@ -5855,9 +5911,12 @@ private struct RemoteFilesPanel: View {
 
             if sessionTransferHistory.isEmpty {
                 ContentUnavailableView(
-                    "No Transfer History",
+                    language.localized("No Transfer History", "暂无传输记录"),
                     systemImage: "arrow.up.arrow.down.circle",
-                    description: Text("Downloads and uploads for this server will appear here.")
+                    description: Text(language.localized(
+                        "Downloads and uploads for this server will appear here.",
+                        "此服务器的下载和上传会显示在这里。"
+                    ))
                 )
                 .frame(width: 420, height: 180)
             } else {
@@ -5881,7 +5940,7 @@ private struct RemoteFilesPanel: View {
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(task.direction.label): \(task.displayName)")
+                Text("\(transferDirectionLabel(task.direction)): \(task.displayName)")
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
                 Text(task.summary)
@@ -5909,14 +5968,14 @@ private struct RemoteFilesPanel: View {
                 Button {
                     revealTransfer(task)
                 } label: {
-                    Label("Reveal", systemImage: "folder")
+                    Label(language.localized("Reveal", "显示"), systemImage: "folder")
                 }
                 .labelStyle(.iconOnly)
-                .help("Reveal in Finder")
+                .help(language.localized("Reveal in Finder", "在访达中显示"))
             }
 
             if canResumeTransfer(task) {
-                Button("Resume") {
+                Button(language.localized("Resume", "继续")) {
                     transferQueueManager.enqueue(task, session: session, context: modelContext)
                 }
                 .disabled(!session.isConnectable)
@@ -5928,24 +5987,38 @@ private struct RemoteFilesPanel: View {
     }
 
     private var pathHint: String {
-        "Current remote path: \(session.remotePath.nilIfBlank ?? "~"). Double-click folders to navigate, or files to download and open a local edit copy."
+        let path = session.remotePath.nilIfBlank ?? "~"
+        return language.localized(
+            "Current remote path: \(path). Double-click folders to navigate, or files to download and open a local edit copy.",
+            "当前远程路径：\(path)。双击文件夹进入，双击文件可下载并打开本地编辑副本。"
+        )
     }
 
     private var statusText: String {
+        let path = session.remotePath.nilIfBlank ?? "~"
         if workspace.entries.isEmpty {
             if loadedEmptyDirectory {
-                return "0 entries · 0 folders · 0 files · \(session.remotePath.nilIfBlank ?? "~")"
+                return language.localized(
+                    "0 entries · 0 folders · 0 files · \(path)",
+                    "0 项 · 0 个文件夹 · 0 个文件 · \(path)"
+                )
             }
 
             let output = workspace.result?.displayText.nilIfBlank
             return output.map {
-                "No file rows parsed from \(session.remotePath.nilIfBlank ?? "~"). Last output: \($0)"
-            } ?? "No entries loaded from \(session.remotePath.nilIfBlank ?? "~")."
+                language.localized(
+                    "No file rows parsed from \(path). Last output: \($0)",
+                    "未能从 \(path) 解析出文件。最后输出：\($0)"
+                )
+            } ?? language.localized("No entries loaded from \(path).", "尚未从 \(path) 读取到项目。")
         }
 
         let folders = workspace.entries.filter(\.isDirectory).count
         let files = workspace.entries.filter(\.isRegularFile).count
-        return "\(workspace.entries.count) entries · \(folders) folders · \(files) files · \(session.remotePath.nilIfBlank ?? "~")"
+        return language.localized(
+            "\(workspace.entries.count) entries · \(folders) folders · \(files) files · \(path)",
+            "\(workspace.entries.count) 项 · \(folders) 个文件夹 · \(files) 个文件 · \(path)"
+        )
     }
 
     private var loadedEmptyDirectory: Bool {
@@ -5956,7 +6029,9 @@ private struct RemoteFilesPanel: View {
     }
 
     private var emptyDirectoryTitle: String {
-        loadedEmptyDirectory ? "Empty Folder" : "No Files Loaded"
+        loadedEmptyDirectory
+            ? language.localized("Empty Folder", "空文件夹")
+            : language.localized("No Files Loaded", "尚未加载文件")
     }
 
     private var emptyDirectoryDescription: String {
@@ -5965,10 +6040,16 @@ private struct RemoteFilesPanel: View {
         }
 
         if loadedEmptyDirectory {
-            return "The current path has no files or folders."
+            return language.localized(
+                "The current path has no files or folders.",
+                "当前路径下没有文件或文件夹。"
+            )
         }
 
-        return "Refresh the current path or check Server Properties."
+        return language.localized(
+            "Refresh the current path or check Server Properties.",
+            "请刷新当前路径，或检查服务器属性。"
+        )
     }
 
     private func matchesCurrentDestination(
@@ -5985,7 +6066,10 @@ private struct RemoteFilesPanel: View {
         let connection = SSHSessionLaunchSnapshot(session: session).materializedSession()
         let requestedPath = session.remotePath
         let operationID = workspace.beginOperation()
-        workspace.operationMessage = "Loading \(requestedPath.nilIfBlank ?? "~")..."
+        workspace.operationMessage = language.localized(
+            "Loading \(requestedPath.nilIfBlank ?? "~")…",
+            "正在加载 \(requestedPath.nilIfBlank ?? "~")…"
+        )
         workspace.errorMessage = nil
 
         Task {
@@ -6007,7 +6091,10 @@ private struct RemoteFilesPanel: View {
                     if fallback.succeeded {
                         resolvedResult = fallback
                         loadedEntries = fallbackEntries
-                        resolvedMessage = "Loaded \(fallbackEntries.count) remote entries over SSH fallback."
+                        resolvedMessage = language.localized(
+                            "Loaded \(fallbackEntries.count) remote entries over SSH fallback.",
+                            "已通过 SSH 备用方式加载 \(fallbackEntries.count) 个远程项目。"
+                        )
                     } else if sftpResult.succeeded {
                         resolvedResult = fallback
                     }
@@ -6026,11 +6113,14 @@ private struct RemoteFilesPanel: View {
                     workspace.errorMessage = nil
                     workspace.markLoaded(session: connection, path: requestedPath)
                     workspace.operationMessage = resolvedMessage
-                        ?? "Loaded \(workspace.entries.count) remote entries over SFTP."
+                        ?? language.localized(
+                            "Loaded \(workspace.entries.count) remote entries over SFTP.",
+                            "已通过 SFTP 加载 \(workspace.entries.count) 个远程项目。"
+                        )
                 } else {
                     workspace.entries = []
                     workspace.errorMessage = RemoteSFTPTransport.failureMessage(for: sftpResult)
-                    workspace.operationMessage = "SFTP listing failed."
+                    workspace.operationMessage = language.localized("SFTP listing failed.", "SFTP 列表读取失败。")
                     workspace.markLoaded(session: connection, path: requestedPath)
                 }
             } catch {
@@ -6079,7 +6169,7 @@ private struct RemoteFilesPanel: View {
         let folderName = workspace.newFolderName
         let targetPath = remotePath(name: folderName, in: session.remotePath)
         runSFTPOperation(
-            message: "Creating folder \(folderName)...",
+            message: language.localized("Creating folder \(folderName)…", "正在创建文件夹 \(folderName)…"),
             connectionKey: connection.connectionKey
         ) {
             try await sftpTransport.makeDirectory(session: connection, path: targetPath)
@@ -6095,7 +6185,7 @@ private struct RemoteFilesPanel: View {
         let connection = SSHSessionLaunchSnapshot(session: session).materializedSession()
         let targetPath = remotePath(name: entry.name, in: session.remotePath)
         runSFTPOperation(
-            message: "Deleting \(entry.name)...",
+            message: language.localized("Deleting \(entry.name)…", "正在删除 \(entry.name)…"),
             connectionKey: connection.connectionKey
         ) {
             if entry.isDirectory {
@@ -6113,7 +6203,7 @@ private struct RemoteFilesPanel: View {
         let renameTargetName = workspace.renameTargetName
         let targetPath = remotePath(name: renameTargetName, in: currentPath)
         runSFTPOperation(
-            message: "Renaming \(selectedEntry.name)...",
+            message: language.localized("Renaming \(selectedEntry.name)…", "正在重命名 \(selectedEntry.name)…"),
             connectionKey: connection.connectionKey
         ) {
             try await sftpTransport.rename(
@@ -6144,7 +6234,7 @@ private struct RemoteFilesPanel: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = "Upload"
+        panel.prompt = language.localized("Upload", "上传")
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
@@ -6165,7 +6255,10 @@ private struct RemoteFilesPanel: View {
         modelContext.insert(transfer)
         try? modelContext.save()
         transferQueueManager.enqueue(transfer, session: session, context: modelContext)
-        workspace.operationMessage = "Queued upload \(url.lastPathComponent)."
+        workspace.operationMessage = language.localized(
+            "Queued upload \(url.lastPathComponent).",
+            "已加入上传队列：\(url.lastPathComponent)。"
+        )
         workspace.errorMessage = nil
     }
 
@@ -6186,12 +6279,12 @@ private struct RemoteFilesPanel: View {
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = false
-            panel.prompt = "Download"
+            panel.prompt = language.localized("Download", "下载")
             localDestinationURL = panel.runModal() == .OK ? panel.url : nil
         } else {
             let panel = NSSavePanel()
             panel.nameFieldStringValue = entry.name
-            panel.prompt = "Download"
+            panel.prompt = language.localized("Download", "下载")
             localDestinationURL = panel.runModal() == .OK ? panel.url : nil
         }
 
@@ -6210,7 +6303,10 @@ private struct RemoteFilesPanel: View {
         modelContext.insert(transfer)
         try? modelContext.save()
         transferQueueManager.enqueue(transfer, session: session, context: modelContext)
-        workspace.operationMessage = "Queued download \(entry.name)."
+        workspace.operationMessage = language.localized(
+            "Queued download \(entry.name).",
+            "已加入下载队列：\(entry.name)。"
+        )
         workspace.errorMessage = nil
     }
 
@@ -6226,7 +6322,10 @@ private struct RemoteFilesPanel: View {
         let remoteSource = remotePath(name: entry.name, in: session.remotePath)
         let entryName = entry.name
         let operationID = workspace.beginOperation()
-        workspace.operationMessage = "Preparing editable copy of \(entry.name)..."
+        workspace.operationMessage = language.localized(
+            "Preparing editable copy of \(entry.name)…",
+            "正在准备 \(entry.name) 的编辑副本…"
+        )
         workspace.errorMessage = nil
 
         Task {
@@ -6250,7 +6349,10 @@ private struct RemoteFilesPanel: View {
 
                 guard downloadResult.succeeded else {
                     workspace.errorMessage = downloadResult.displayText
-                    workspace.operationMessage = "Could not open editable copy for \(entryName)."
+                    workspace.operationMessage = language.localized(
+                        "Could not open editable copy for \(entryName).",
+                        "无法打开 \(entryName) 的编辑副本。"
+                    )
                     removeLocalEditDraft(draft)
                     workspace.finishOperation(operationID)
                     return
@@ -6259,7 +6361,10 @@ private struct RemoteFilesPanel: View {
                 workspace.editDraft = draft
                 draftToCleanUp = nil
                 NSWorkspace.shared.open(draft.localURL)
-                workspace.operationMessage = "Opened editable copy. Save locally, then click Upload Edited."
+                workspace.operationMessage = language.localized(
+                    "Opened editable copy. Save it locally, then choose More → Sync Edited Copy.",
+                    "已打开编辑副本。在本地保存后，选择“更多 → 同步编辑副本”。"
+                )
             } catch {
                 guard workspace.isCurrentOperation(operationID) else {
                     if let draftToCleanUp { removeLocalEditDraft(draftToCleanUp) }
@@ -6275,17 +6380,26 @@ private struct RemoteFilesPanel: View {
     private func uploadEditedCopy() {
         guard let editDraft = workspace.editDraft else { return }
         guard FileManager.default.fileExists(atPath: editDraft.localURL.path) else {
-            workspace.errorMessage = "Local edit copy no longer exists: \(editDraft.localURL.path)"
+            workspace.errorMessage = language.localized(
+                "Local edit copy no longer exists: \(editDraft.localURL.path)",
+                "本地编辑副本已不存在：\(editDraft.localURL.path)"
+            )
             return
         }
         let connection = SSHSessionLaunchSnapshot(session: session).materializedSession()
         guard connection.connectionKey == editDraft.sessionKey else {
-            workspace.errorMessage = "This edit copy belongs to the server identity that originally downloaded it. The profile has changed; open a new editable copy before uploading."
+            workspace.errorMessage = language.localized(
+                "This edit copy belongs to the server identity that originally downloaded it. The profile has changed; open a new editable copy before uploading.",
+                "此编辑副本属于最初下载它的服务器身份。配置已更改，请重新打开编辑副本后再上传。"
+            )
             return
         }
 
         let operationID = workspace.beginOperation()
-        workspace.operationMessage = "Uploading edited copy of \(editDraft.remoteName)..."
+        workspace.operationMessage = language.localized(
+            "Uploading edited copy of \(editDraft.remoteName)…",
+            "正在上传 \(editDraft.remoteName) 的编辑副本…"
+        )
         workspace.errorMessage = nil
 
         Task {
@@ -6299,14 +6413,17 @@ private struct RemoteFilesPanel: View {
                 workspace.result = uploadResult
 
                 if uploadResult.succeeded {
-                    workspace.operationMessage = "Uploaded edited copy to \(editDraft.remotePath)."
+                    workspace.operationMessage = language.localized(
+                        "Uploaded edited copy to \(editDraft.remotePath).",
+                        "已将编辑副本上传到 \(editDraft.remotePath)。"
+                    )
                     workspace.finishOperation(operationID)
                     listDirectory()
                     return
                 }
 
                 workspace.errorMessage = uploadResult.displayText
-                workspace.operationMessage = "Could not upload edited copy."
+                workspace.operationMessage = language.localized("Could not upload edited copy.", "无法上传编辑副本。")
             } catch {
                 guard workspace.isCurrentOperation(operationID) else { return }
                 workspace.errorMessage = error.localizedDescription
@@ -6326,32 +6443,32 @@ private struct RemoteFilesPanel: View {
             Button {
                 open(entry)
             } label: {
-                Label("Open Folder", systemImage: "folder")
+                Label(language.localized("Open Folder", "打开文件夹"), systemImage: "folder")
             }
 
             Button {
                 uploadIntoDirectory(entry)
             } label: {
-                Label("Upload Here...", systemImage: "square.and.arrow.up")
+                Label(language.localized("Upload Here…", "上传到此处…"), systemImage: "square.and.arrow.up")
             }
 
             Button {
                 download(entry)
             } label: {
-                Label("Download Folder...", systemImage: "square.and.arrow.down")
+                Label(language.localized("Download Folder…", "下载文件夹…"), systemImage: "square.and.arrow.down")
             }
         } else {
             Button {
                 openForEditing(entry)
             } label: {
-                Label("Open Editable Copy", systemImage: "pencil.and.outline")
+                Label(language.localized("Open Editable Copy", "打开编辑副本"), systemImage: "pencil.and.outline")
             }
             .disabled(!entry.isRegularFile)
 
             Button {
                 download(entry)
             } label: {
-                Label("Download...", systemImage: "square.and.arrow.down")
+                Label(language.localized("Download…", "下载…"), systemImage: "square.and.arrow.down")
             }
             .disabled(!entry.isRegularFile)
         }
@@ -6361,28 +6478,27 @@ private struct RemoteFilesPanel: View {
         Button {
             uploadIntoCurrentDirectory()
         } label: {
-            Label("Upload to Current Folder...", systemImage: "arrow.up.doc")
+            Label(language.localized("Upload to Current Folder…", "上传到当前文件夹…"), systemImage: "arrow.up.doc")
         }
 
         Button {
             copyRemotePath(for: entry)
         } label: {
-            Label("Copy Remote Path", systemImage: "doc.on.doc")
+            Label(language.localized("Copy Remote Path", "拷贝远程路径"), systemImage: "doc.on.doc")
         }
 
         Button {
-            workspace.selectedEntryID = entry.id
-            workspace.renameTargetName = entry.name
+            beginRename(entry)
         } label: {
-            Label("Prepare Rename", systemImage: "pencil")
+            Label(language.localized("Rename…", "重命名…"), systemImage: "pencil")
         }
 
         Divider()
 
         Button(role: .destructive) {
-            delete(entry)
+            entryPendingDeletion = entry
         } label: {
-            Label("Delete", systemImage: "trash")
+            Label(language.localized("Delete…", "删除…"), systemImage: "trash")
         }
     }
 
@@ -6521,14 +6637,34 @@ private struct RemoteFilesPanel: View {
 
     private func transferStatusLabel(for task: RemoteTransferTask) -> String {
         if transferQueueManager.isActive(task) {
-            return "Running"
+            return language.localized("Running", "进行中")
         }
 
         if task.status == .running {
-            return "Interrupted"
+            return language.localized("Interrupted", "已中断")
         }
 
-        return task.status.label
+        switch task.status {
+        case .queued:
+            return language.localized("Queued", "排队中")
+        case .running:
+            return language.localized("Running", "进行中")
+        case .succeeded:
+            return language.localized("Done", "完成")
+        case .failed:
+            return language.localized("Failed", "失败")
+        case .cancelled:
+            return language.localized("Cancelled", "已取消")
+        }
+    }
+
+    private func transferDirectionLabel(_ direction: RemoteTransferDirection) -> String {
+        switch direction {
+        case .download:
+            return language.localized("Download", "下载")
+        case .upload:
+            return language.localized("Upload", "上传")
+        }
     }
 
     private func transferTimestamp(for task: RemoteTransferTask) -> String {
@@ -6547,6 +6683,7 @@ private struct RemoteFilesPanel: View {
 }
 
 private struct TunnelPanel: View {
+    @Environment(\.appLanguage) private var language
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SavedSSHTunnel.updatedAt, order: .reverse) private var savedTunnels: [SavedSSHTunnel]
     let session: RemoteSession
@@ -6565,19 +6702,24 @@ private struct TunnelPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                SectionTitle("SSH Tunnels")
+                SectionTitle(language.localized("SSH Tunnels", "SSH 隧道"))
                 Spacer()
                 if manager.isRunning || manager.isReconnectScheduled {
                     Button(role: .destructive) {
                         manager.stop()
                     } label: {
-                        Label(manager.isReconnectScheduled ? "Cancel Reconnect" : "Stop", systemImage: "stop.fill")
+                        Label(
+                            manager.isReconnectScheduled
+                                ? language.localized("Cancel Reconnect", "取消重连")
+                                : language.localized("Stop", "停止"),
+                            systemImage: "stop.fill"
+                        )
                     }
                 } else {
                     Button {
                         manager.start(session: session, configuration: configuration)
                     } label: {
-                        Label("Start Tunnel", systemImage: "play.fill")
+                        Label(language.localized("Start Tunnel", "启动隧道"), systemImage: "play.fill")
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!session.isConnectable || validationMessage != nil)
@@ -6586,7 +6728,7 @@ private struct TunnelPanel: View {
 
             if !sessionTunnels.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Saved tunnel profiles")
+                    Text(language.localized("Saved tunnel profiles", "已保存的隧道配置"))
                         .font(.headline)
 
                     ForEach(sessionTunnels) { tunnel in
@@ -6601,7 +6743,7 @@ private struct TunnelPanel: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                     if tunnel.configuration.autoReconnect {
-                                        Label("Auto reconnect", systemImage: "arrow.clockwise")
+                                        Label(language.localized("Auto reconnect", "自动重连"), systemImage: "arrow.clockwise")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -6621,6 +6763,8 @@ private struct TunnelPanel: View {
                                 Image(systemName: "trash")
                             }
                             .buttonStyle(.borderless)
+                            .help(language.localized("Delete saved tunnel profile", "删除已保存的隧道配置"))
+                            .accessibilityLabel(language.localized("Delete saved tunnel profile", "删除已保存的隧道配置"))
                         }
                         .padding(10)
                         .background(
@@ -6632,30 +6776,32 @@ private struct TunnelPanel: View {
             }
 
             HStack {
-                TextField("Name", text: $configuration.name)
-                Picker("Kind", selection: $configuration.kind) {
+                TextField(language.localized("Name", "名称"), text: $configuration.name)
+                Picker(language.localized("Kind", "类型"), selection: $configuration.kind) {
                     ForEach(SSHTunnelKind.allCases) { kind in
-                        Text(kind.rawValue).tag(kind)
+                        Text(tunnelKindTitle(kind)).tag(kind)
                     }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
             }
 
             HStack {
-                TextField("Bind address", text: $configuration.bindAddress)
-                TextField("Local port", value: $configuration.localPort, format: .number)
+                TextField(language.localized("Bind address", "绑定地址"), text: $configuration.bindAddress)
+                TextField(language.localized("Local port", "本地端口"), value: $configuration.localPort, format: .number.grouping(.never))
                     .frame(width: 110)
             }
 
             if configuration.kind != .dynamic {
                 HStack {
-                    TextField("Destination host", text: $configuration.destinationHost)
-                    TextField("Destination port", value: $configuration.destinationPort, format: .number)
+                    TextField(language.localized("Destination host", "目标主机"), text: $configuration.destinationHost)
+                    TextField(language.localized("Destination port", "目标端口"), value: $configuration.destinationPort, format: .number.grouping(.never))
                         .frame(width: 130)
                 }
             }
 
-            Toggle("Auto reconnect if the tunnel drops", isOn: $configuration.autoReconnect)
+            Toggle(language.localized("Auto reconnect if the tunnel drops", "隧道断开时自动重连"), isOn: $configuration.autoReconnect)
                 .font(.callout)
 
             if let validationMessage {
@@ -6665,8 +6811,14 @@ private struct TunnelPanel: View {
             } else {
                 Label(
                     configuration.supportsLocalReadinessCheck
-                        ? "Readiness check will probe \(configuration.localEndpointSummary) after startup."
-                        : "Remote tunnels start on the server side and cannot be probed locally.",
+                        ? language.localized(
+                            "Readiness check will probe \(configuration.localEndpointSummary) after startup.",
+                            "启动后会探测 \(configuration.localEndpointSummary) 以确认隧道就绪。"
+                        )
+                        : language.localized(
+                            "Remote tunnels start on the server side and cannot be probed locally.",
+                            "远程隧道在服务器端启动，无法在本地探测。"
+                        ),
                     systemImage: "checkmark.shield.fill"
                 )
                 .font(.caption)
@@ -6677,7 +6829,12 @@ private struct TunnelPanel: View {
                 Button {
                     saveCurrent()
                 } label: {
-                    Label(selectedSavedTunnelID == nil ? "Save Tunnel Profile" : "Update Saved Profile", systemImage: "tray.and.arrow.down.fill")
+                    Label(
+                        selectedSavedTunnelID == nil
+                            ? language.localized("Save Tunnel Profile", "保存隧道配置")
+                            : language.localized("Update Saved Profile", "更新已保存配置"),
+                        systemImage: "tray.and.arrow.down.fill"
+                    )
                 }
                 .buttonStyle(.bordered)
                 .disabled(!session.isConnectable || validationMessage != nil)
@@ -6686,7 +6843,7 @@ private struct TunnelPanel: View {
                     selectedSavedTunnelID = nil
                     configuration = SSHTunnelConfiguration()
                 } label: {
-                    Label("New Profile", systemImage: "plus")
+                    Label(language.localized("New Profile", "新建配置"), systemImage: "plus")
                 }
                 .buttonStyle(.bordered)
             }
@@ -6708,6 +6865,17 @@ private struct TunnelPanel: View {
     private func load(_ tunnel: SavedSSHTunnel) {
         configuration = tunnel.configuration
         selectedSavedTunnelID = tunnel.persistentModelID
+    }
+
+    private func tunnelKindTitle(_ kind: SSHTunnelKind) -> String {
+        switch kind {
+        case .local:
+            return language.localized("Local", "本地")
+        case .remote:
+            return language.localized("Remote", "远程")
+        case .dynamic:
+            return language.localized("Dynamic SOCKS", "动态 SOCKS")
+        }
     }
 
     private func saveCurrent() {
@@ -7041,6 +7209,10 @@ private struct TerminalTabStrip: View {
                             workspace.selectedTabID = tab.id
                         },
                         onClose: {
+                            if workspace.hasRunningProcesses(inTab: tab.id),
+                               !confirmClosingRunningTab(title: title) {
+                                return
+                            }
                             workspace.closeTab(id: tab.id)
                         }
                     )
@@ -7049,6 +7221,21 @@ private struct TerminalTabStrip: View {
             .padding(.vertical, 1)
         }
         .scrollIndicators(.hidden)
+    }
+
+    /// Closing a window already asks before ending sessions; a tab close
+    /// button is easier to hit by accident, so it asks as well.
+    private func confirmClosingRunningTab(title: String) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = language.localized("Close “\(title)”?", "关闭“\(title)”？")
+        alert.informativeText = language.localized(
+            "The terminal session in this tab is still running. Closing the tab disconnects it.",
+            "此标签页中的终端会话仍在运行，关闭标签页会断开连接。"
+        )
+        alert.addButton(withTitle: language.localized("Close Tab", "关闭标签页"))
+        alert.addButton(withTitle: language.localized("Cancel", "取消"))
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func tabTitle(for tab: TerminalWorkspaceState.Tab) -> String {
@@ -9519,7 +9706,7 @@ private struct PasswordPanel: View {
     @Environment(\.appLanguage) private var language
     let session: RemoteSession
     @State private var secret = ""
-    @State private var status = "No password loaded."
+    @State private var status: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -9558,13 +9745,13 @@ private struct PasswordPanel: View {
                 .disabled(!session.isConnectable)
             }
 
-            Text(status)
+            Text(status ?? language.localized("No password loaded.", "尚未读取密码。"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Text(language.localized(
-                "Passwords are stored in the local encrypted SQLite vault. JTS Terminal reads saved values for SSH, SFTP, SCP, and tunnel workflows when a password is needed; ssh-agent still works for key authentication.",
-                "密码会保存到本地加密 SQLite 密码库。JTS Terminal 的 SSH、SFTP、SCP 和 tunnel 流程会在需要密码时读取这里保存的值；系统 ssh-agent 仍可继续用于密钥认证。"
+                "Passwords are stored in the local encrypted SQLite vault. JTS Terminal reads saved values for SSH, SFTP, SCP, and tunnel workflows when a password is needed. For key authentication, choose the private key with Browse in Server Properties, or load it into the macOS ssh-agent with ssh-add. Third-party agents such as 1Password or Secretive cannot be reached from App Sandbox.",
+                "密码会保存到本地加密 SQLite 密码库。JTS Terminal 的 SSH、SFTP、SCP 和隧道流程会在需要密码时读取这里保存的值。使用密钥认证时，请在服务器属性中通过“浏览”选择私钥，或用 ssh-add 将密钥载入 macOS 自带的 ssh-agent。App Sandbox 无法访问 1Password、Secretive 等第三方 agent。"
             ))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -9628,27 +9815,28 @@ private struct PasswordPanel: View {
 }
 
 private struct ProfilePortabilityPanel: View {
+    @Environment(\.appLanguage) private var language
     let session: RemoteSession
     let sessions: [RemoteSession]
     let importProfiles: ([RemoteSessionProfile]) -> Void
-    @State private var status = "Exported profiles do not include saved password secrets."
+    @State private var status: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionTitle("Import / Export Profiles")
+            SectionTitle(language.localized("Import / Export Profiles", "导入导出配置"))
 
             HStack {
                 Button {
                     export([session], suggestedName: safeFilename(session.name.nilIfBlank ?? session.host.nilIfBlank ?? "session"))
                 } label: {
-                    Label("Export Current", systemImage: "square.and.arrow.up")
+                    Label(language.localized("Export Current", "导出当前"), systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.bordered)
 
                 Button {
                     export(sessions, suggestedName: "jts-terminal-mac-sessions")
                 } label: {
-                    Label("Export All", systemImage: "archivebox")
+                    Label(language.localized("Export All", "全部导出"), systemImage: "archivebox")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(sessions.isEmpty)
@@ -9656,12 +9844,15 @@ private struct ProfilePortabilityPanel: View {
                 Button {
                     importFile()
                 } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
+                    Label(language.localized("Import", "导入"), systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.bordered)
             }
 
-            Text(status)
+            Text(status ?? language.localized(
+                "Exported profiles do not include saved password secrets.",
+                "导出的配置不包含已保存的密码。"
+            ))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
@@ -9678,14 +9869,20 @@ private struct ProfilePortabilityPanel: View {
             panel.allowedContentTypes = [.json]
 
             guard panel.runModal() == .OK, let url = panel.url else {
-                status = "Export cancelled."
+                status = language.localized("Export cancelled.", "已取消导出。")
                 return
             }
 
             try data.write(to: url, options: .atomic)
-            status = "Exported \(sessions.count) profile(s) to \(url.lastPathComponent). Saved password secrets were not exported."
+            status = language.localized(
+                "Exported \(sessions.count) profile(s) to \(url.lastPathComponent). Saved password secrets were not exported.",
+                "已将 \(sessions.count) 个配置导出到 \(url.lastPathComponent)。已保存的密码未被导出。"
+            )
         } catch {
-            status = "Export failed: \(error.localizedDescription)"
+            status = language.localized(
+                "Export failed: \(error.localizedDescription)",
+                "导出失败：\(error.localizedDescription)"
+            )
         }
     }
 
@@ -9698,15 +9895,21 @@ private struct ProfilePortabilityPanel: View {
             panel.allowedContentTypes = [.json]
 
             guard panel.runModal() == .OK, let url = panel.url else {
-                status = "Import cancelled."
+                status = language.localized("Import cancelled.", "已取消导入。")
                 return
             }
 
             let profiles = try SessionProfileCodec.decode(Data(contentsOf: url))
             importProfiles(profiles)
-            status = "Imported \(profiles.count) profile(s) from \(url.lastPathComponent). Passwords are never imported; JTS Terminal will ask before the first password-based connection."
+            status = language.localized(
+                "Imported \(profiles.count) profile(s) from \(url.lastPathComponent). Passwords are never imported; JTS Terminal will ask before the first password-based connection.",
+                "已从 \(url.lastPathComponent) 导入 \(profiles.count) 个配置。密码不会被导入；首次使用密码连接前 JTS Terminal 会询问。"
+            )
         } catch {
-            status = "Import failed: \(error.localizedDescription)"
+            status = language.localized(
+                "Import failed: \(error.localizedDescription)",
+                "导入失败：\(error.localizedDescription)"
+            )
         }
     }
 
@@ -9951,9 +10154,6 @@ private struct SidebarBackground: View {
 private enum AppTheme {
     static let signal = Color.accentColor
     static let signalSoft = Color.accentColor.opacity(0.12)
-    static let focusGreen = Color(nsColor: .systemGreen)
-    static let focusGreenSoft = Color(nsColor: .systemGreen).opacity(0.20)
-    static let focusGreenBorder = Color(nsColor: .systemGreen).opacity(0.50)
     static let ember = Color.orange
     static let canvas = Color(nsColor: .windowBackgroundColor)
     static let sidebar = Color(nsColor: .controlBackgroundColor)
@@ -9977,15 +10177,6 @@ private struct PrimarySoftButtonStyle: ButtonStyle {
                 Color.accentColor.opacity(configuration.isPressed ? 0.75 : 1),
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
-    }
-}
-
-private struct FeatureRailPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.975 : 1)
-            .brightness(configuration.isPressed ? -0.025 : 0)
-            .animation(.snappy(duration: 0.10), value: configuration.isPressed)
     }
 }
 

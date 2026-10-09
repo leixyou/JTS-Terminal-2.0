@@ -9,8 +9,6 @@ import Foundation
 import SwiftData
 
 nonisolated enum AppReleasePolicy {
-    static let appStoreMarketingVersion = "1.2"
-
     #if ENABLE_RDP_2
     static let includesNativeRDP = true
     #else

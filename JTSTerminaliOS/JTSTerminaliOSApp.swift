@@ -15,6 +15,7 @@ struct JTSTerminaliOSApp: App {
         let resetState = ProcessInfo.processInfo.arguments.contains("-reset-mobile-state")
         if resetState {
             MobileCredentialStore.deleteAllStoredSecrets()
+            MobileKnownHostsStore.removeAll()
         }
         let store = MobileSessionStore(resetPersistentState: resetState)
         #if DEBUG

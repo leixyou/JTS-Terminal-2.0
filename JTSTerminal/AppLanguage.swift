@@ -12,7 +12,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case english = "en"
     case simplifiedChinese = "zh-Hans"
 
-    static let storageKey = "appLanguage.v1"
+    nonisolated static let storageKey = "appLanguage.v1"
     static let defaultLanguage = AppLanguage.english
 
     var id: String { rawValue }
@@ -54,6 +54,16 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         case .simplifiedChinese:
             return simplifiedChinese
         }
+    }
+
+    /// Variant of `stored.localized` for text produced off the main actor,
+    /// such as `LocalizedError` descriptions of nonisolated types.
+    nonisolated static func localizedForStoredLanguage(
+        _ english: String,
+        _ simplifiedChinese: String,
+        defaults: UserDefaults = .standard
+    ) -> String {
+        defaults.string(forKey: storageKey) == "zh-Hans" ? simplifiedChinese : english
     }
 }
 

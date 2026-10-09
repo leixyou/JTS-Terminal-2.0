@@ -42,6 +42,9 @@ final class JTSTerminaliOSUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["mobile.workspaceRemotePath"].waitForExistence(timeout: 2))
 
         app.buttons["mobile.terminalConnectButton"].tap()
+        // A local sshd presents its host key before authentication; leave it
+        // untrusted so the failure state below is still exercised.
+        respondToHostKeyPromptIfPresented(app: app, trust: false)
         XCTAssertTrue(app.staticTexts["mobile.terminalStatus"].waitForExistence(timeout: 15))
         XCTAssertEqual(app.staticTexts["mobile.terminalStatus"].label, "Failed")
         XCTAssertTrue(app.staticTexts["mobile.terminalError"].exists)
@@ -49,6 +52,7 @@ final class JTSTerminaliOSUITests: XCTestCase {
 
         openFilesTab(app: app)
         XCTAssertTrue(app.textFields["mobile.filesRemotePathField"].waitForExistence(timeout: 5))
+        respondToHostKeyPromptIfPresented(app: app, trust: false)
         XCTAssertTrue(app.staticTexts["mobile.filesError"].waitForExistence(timeout: 15))
         XCTAssertTrue(isExpectedConnectionFailure(app.staticTexts["mobile.filesError"].label))
         XCTAssertTrue(app.staticTexts["No Files Loaded"].exists)
@@ -87,6 +91,7 @@ final class JTSTerminaliOSUITests: XCTestCase {
         openWorkspace(app: app, address: "\(fixture.username)@\(fixture.host):\(fixture.port)")
 
         app.buttons["mobile.terminalConnectButton"].tap()
+        respondToHostKeyPromptIfPresented(app: app, trust: true, timeout: 15)
         let passwordField = app.secureTextFields["mobile.credentialPasswordField"]
         XCTAssertTrue(passwordField.waitForExistence(timeout: 15))
         XCTAssertTrue(app.navigationBars["Update Password"].exists)
@@ -280,7 +285,22 @@ final class JTSTerminaliOSUITests: XCTestCase {
         message.contains("Cannot reach") ||
             message.contains("Connection timed out") ||
             message.contains("Authentication failed") ||
-            message.contains("Network path")
+            message.contains("Network path") ||
+            message.contains("Verify the host key")
+    }
+
+    /// First connections to an SSH endpoint ask the user to verify its host
+    /// key fingerprint. Trust it for fixture flows, or cancel to keep the
+    /// connection failing.
+    private func respondToHostKeyPromptIfPresented(
+        app: XCUIApplication,
+        trust: Bool,
+        timeout: TimeInterval = 5
+    ) {
+        let alert = app.alerts["Verify Host Key"]
+        guard alert.waitForExistence(timeout: timeout) else { return }
+        attachScreenshot(named: "host-key-verification")
+        alert.buttons[trust ? "Trust and Connect" : "Cancel"].tap()
     }
 
     private func attachScreenshot(named name: String) {

@@ -18,6 +18,7 @@ enum MobileNativeSSHError: LocalizedError, Equatable {
     case unsupportedPrivateKey
     case connectionTimedOut(host: String, port: Int)
     case connectionFailed(String)
+    case hostKeyNotTrusted(MobileHostKeyChallenge)
 
     var errorDescription: String? {
         switch self {
@@ -31,7 +32,21 @@ enum MobileNativeSSHError: LocalizedError, Equatable {
             return "Connection timed out while reaching \(host):\(port). Check the address, VPN, firewall, and SSH port."
         case .connectionFailed(let message):
             return message
+        case .hostKeyNotTrusted(let challenge):
+            switch challenge.kind {
+            case .unknown:
+                return "Verify the host key of \(challenge.endpointDescription) before connecting. Fingerprint: \(challenge.fingerprint)"
+            case .changed:
+                return "The host key of \(challenge.endpointDescription) changed. The connection was stopped to protect your credentials."
+            }
         }
+    }
+
+    var hostKeyChallenge: MobileHostKeyChallenge? {
+        if case .hostKeyNotTrusted(let challenge) = self {
+            return challenge
+        }
+        return nil
     }
 }
 
@@ -147,6 +162,7 @@ actor MobileSSHSessionTransport {
 final class MobileTerminalController: ObservableObject {
     @Published private(set) var state: MobileConnectionState = .disconnected
     @Published private(set) var credentialPromptReason: MobileCredentialPromptReason?
+    @Published private(set) var hostKeyChallenge: MobileHostKeyChallenge?
 
     private let connection: MobileCitadelTerminalConnection
     private var terminalAttachment: (id: UUID, feed: ([UInt8]) -> Void)?
@@ -193,6 +209,7 @@ final class MobileTerminalController: ObservableObject {
         }
 
         credentialPromptReason = nil
+        hostKeyChallenge = nil
         terminalHistory.removeAll(keepingCapacity: true)
         state = .connecting
         connection.start(
@@ -208,12 +225,19 @@ final class MobileTerminalController: ObservableObject {
             },
             onCredentialRequired: { [weak self] reason in
                 self?.credentialPromptReason = reason
+            },
+            onHostKeyRequired: { [weak self] challenge in
+                self?.hostKeyChallenge = challenge
             }
         )
     }
 
     func clearCredentialPrompt() {
         credentialPromptReason = nil
+    }
+
+    func clearHostKeyChallenge() {
+        hostKeyChallenge = nil
     }
 
     func disconnect() {
@@ -259,7 +283,8 @@ private final class MobileCitadelTerminalConnection {
         rows: Int,
         onOutput: @escaping @MainActor ([UInt8]) -> Void,
         onStateChange: @escaping @MainActor (MobileConnectionState) -> Void,
-        onCredentialRequired: @escaping @MainActor (MobileCredentialPromptReason) -> Void
+        onCredentialRequired: @escaping @MainActor (MobileCredentialPromptReason) -> Void,
+        onHostKeyRequired: @escaping @MainActor (MobileHostKeyChallenge) -> Void
     ) {
         stopPTY()
         let pendingDisconnect = disconnectTask
@@ -316,7 +341,9 @@ private final class MobileCitadelTerminalConnection {
             } catch {
                 let message = MobileCitadelClientFactory.userFacingMessage(for: error)
                 onStateChange(.failed(message))
-                if let reason = MobileCitadelClientFactory.credentialPromptReason(for: error) {
+                if let challenge = (error as? MobileNativeSSHError)?.hostKeyChallenge {
+                    onHostKeyRequired(challenge)
+                } else if let reason = MobileCitadelClientFactory.credentialPromptReason(for: error) {
                     onCredentialRequired(reason)
                 }
             }
@@ -543,28 +570,32 @@ enum MobileCitadelClientFactory {
             throw MobileNativeSSHError.incompleteProfile
         }
 
+        let hostKeyValidator = MobileHostKeyValidator(host: profile.host, port: profile.port)
         let settings = SSHClientSettings(
             host: profile.host,
             port: profile.port,
             authenticationMethod: {
                 tryAuthenticationMethod(profile: profile, credentials: credentials)
             },
-            hostKeyValidator: .acceptAnything()
+            hostKeyValidator: .custom(hostKeyValidator)
         )
 
         do {
-            return try await withTimeout(
-                seconds: MobileSSHConnectionTuning.connectTimeoutSeconds,
-                timeoutError: {
-                    MobileNativeSSHError.connectionTimedOut(host: profile.host, port: profile.port)
-                },
-                operation: {
-                    try await SSHClient.connect(to: settings)
-                }
+            return try await connect(
+                settings: settings,
+                timeoutSeconds: MobileSSHConnectionTuning.connectTimeoutSeconds,
+                timeoutError: MobileNativeSSHError.connectionTimedOut(host: profile.host, port: profile.port)
             )
-        } catch let error as MobileNativeSSHError {
-            throw error
         } catch {
+            // The validator records the rejected key independently of how
+            // NIO wraps the failed handshake, so the user always gets the
+            // fingerprint prompt instead of a generic negotiation error.
+            if let challenge = hostKeyValidator.rejectedChallenge {
+                throw MobileNativeSSHError.hostKeyNotTrusted(challenge)
+            }
+            if let nativeError = error as? MobileNativeSSHError {
+                throw nativeError
+            }
             throw MobileNativeSSHError.connectionFailed(userFacingMessage(for: error, profile: profile))
         }
     }
@@ -656,58 +687,168 @@ enum MobileCitadelClientFactory {
             normalizedMessage.contains("allauthenticationoptionsfailed")
     }
 
-    private nonisolated static func withTimeout<T>(
-        seconds: Double,
-        timeoutError: @escaping @Sendable () -> Error,
-        operation: @escaping @Sendable () async throws -> T
-    ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await operation()
-            }
+    /// Returns as soon as either the connection or the deadline finishes.
+    /// A task group would wait for the NIO connect to observe cancellation,
+    /// so the deadline could not interrupt a stalled handshake. A connection
+    /// that completes after the deadline is closed instead of leaking.
+    private nonisolated static func connect(
+        settings: SSHClientSettings,
+        timeoutSeconds: Double,
+        timeoutError: MobileNativeSSHError
+    ) async throws -> SSHClient {
+        let outcome = MobileConnectOutcome()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SSHClient, Error>) in
+                outcome.install(continuation)
 
-            group.addTask {
-                let nanoseconds = UInt64(max(seconds, 0.25) * 1_000_000_000)
-                try await Task.sleep(nanoseconds: nanoseconds)
-                throw timeoutError()
-            }
+                let connectTask = Task {
+                    do {
+                        let client = try await SSHClient.connect(to: settings)
+                        if !outcome.resume(with: .success(client)) {
+                            try? await client.close()
+                        }
+                    } catch {
+                        outcome.resume(with: .failure(error))
+                    }
+                }
 
-            guard let value = try await group.next() else {
-                throw timeoutError()
+                Task {
+                    let nanoseconds = UInt64(max(timeoutSeconds, 0.25) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: nanoseconds)
+                    if outcome.resume(with: .failure(timeoutError)) {
+                        connectTask.cancel()
+                    }
+                }
+                outcome.setCancellationTarget(connectTask)
             }
-            group.cancelAll()
-            return value
+        } onCancel: {
+            outcome.cancel()
         }
     }
 
+    /// Offers every saved credential in order: the private key first, then
+    /// the password, so a profile with both still connects when the server
+    /// only accepts one of them.
     private nonisolated static func tryAuthenticationMethod(
         profile: MobileServerProfile,
         credentials: MobileSSHCredentials
     ) -> SSHAuthenticationMethod {
-        if let password = credentials.password?.mobileNilIfBlank {
-            return .passwordBased(username: profile.username, password: password)
-        }
+        var offers: [NIOSSHUserAuthenticationOffer.Offer] = []
+        var keyParseFailed = false
 
         if let key = credentials.privateKey?.mobileNilIfBlank {
-            let passphrase = credentials.privateKeyPassphrase?.data(using: .utf8)
+            let passphrase = credentials.privateKeyPassphrase.flatMap { $0.isEmpty ? nil : $0.data(using: .utf8) }
             if let ed25519 = try? Curve25519.Signing.PrivateKey(
                 sshEd25519: key,
                 decryptionKey: passphrase
             ) {
-                return .ed25519(username: profile.username, privateKey: ed25519)
-            }
-
-            if let rsa = try? Insecure.RSA.PrivateKey(
+                offers.append(.privateKey(.init(privateKey: NIOSSHPrivateKey(ed25519Key: ed25519))))
+            } else if let rsa = try? Insecure.RSA.PrivateKey(
                 sshRsa: key,
                 decryptionKey: passphrase
             ) {
-                return .rsa(username: profile.username, privateKey: rsa)
+                offers.append(.privateKey(.init(privateKey: NIOSSHPrivateKey(custom: rsa))))
+            } else {
+                keyParseFailed = true
             }
-
-            return .custom(FailingAuthenticationDelegate(error: MobileNativeSSHError.unsupportedPrivateKey))
         }
 
-        return .custom(FailingAuthenticationDelegate(error: MobileNativeSSHError.missingAuthentication))
+        if let password = credentials.password, !password.isEmpty {
+            offers.append(.password(.init(password: password)))
+        }
+
+        guard !offers.isEmpty else {
+            let error: MobileNativeSSHError = keyParseFailed ? .unsupportedPrivateKey : .missingAuthentication
+            return .custom(FailingAuthenticationDelegate(error: error))
+        }
+
+        return .custom(OrderedAuthenticationDelegate(username: profile.username, offers: offers))
+    }
+}
+
+/// Resumes the connect continuation exactly once, whichever of the
+/// connection, the deadline or task cancellation finishes first.
+private final class MobileConnectOutcome: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<SSHClient, Error>?
+    private var isFinished = false
+    private var cancellationTarget: Task<Void, Never>?
+
+    func install(_ continuation: CheckedContinuation<SSHClient, Error>) {
+        lock.lock()
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func setCancellationTarget(_ task: Task<Void, Never>) {
+        lock.lock()
+        let finished = isFinished
+        if !finished {
+            cancellationTarget = task
+        }
+        lock.unlock()
+        if finished {
+            task.cancel()
+        }
+    }
+
+    @discardableResult
+    func resume(with result: Result<SSHClient, Error>) -> Bool {
+        lock.lock()
+        guard !isFinished, let continuation else {
+            lock.unlock()
+            return false
+        }
+        isFinished = true
+        self.continuation = nil
+        cancellationTarget = nil
+        lock.unlock()
+        continuation.resume(with: result)
+        return true
+    }
+
+    func cancel() {
+        lock.lock()
+        let target = cancellationTarget
+        lock.unlock()
+        if resume(with: .failure(CancellationError())) {
+            target?.cancel()
+        }
+    }
+}
+
+private final class OrderedAuthenticationDelegate: NIOSSHClientUserAuthenticationDelegate {
+    private let username: String
+    private var offers: [NIOSSHUserAuthenticationOffer.Offer]
+
+    init(username: String, offers: [NIOSSHUserAuthenticationOffer.Offer]) {
+        self.username = username
+        self.offers = offers
+    }
+
+    func nextAuthenticationType(
+        availableMethods: NIOSSHAvailableUserAuthenticationMethods,
+        nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>
+    ) {
+        while !offers.isEmpty {
+            let offer = offers.removeFirst()
+            let isAvailable: Bool
+            switch offer {
+            case .privateKey:
+                isAvailable = availableMethods.contains(.publicKey)
+            case .password:
+                isAvailable = availableMethods.contains(.password)
+            case .hostBased, .none:
+                isAvailable = false
+            }
+            if isAvailable {
+                nextChallengePromise.succeed(
+                    NIOSSHUserAuthenticationOffer(username: username, serviceName: "", offer: offer)
+                )
+                return
+            }
+        }
+        nextChallengePromise.fail(SSHClientError.allAuthenticationOptionsFailed)
     }
 }
 

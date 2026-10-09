@@ -58,6 +58,7 @@ struct SSHCommandBuilder {
         if includeSessionIdentity {
             let identityFile = session.identityFile.trimmingCharacters(in: .whitespacesAndNewlines)
             if !identityFile.isEmpty {
+                SSHIdentityFileAccess.activateIfNeeded(for: identityFile)
                 arguments += ["-i", expandedHomePath(identityFile)]
             }
         }
@@ -342,6 +343,7 @@ struct SSHCommandBuilder {
         if !passwordAuthentication {
             let identityFile = session.identityFile.trimmingCharacters(in: .whitespacesAndNewlines)
             if !identityFile.isEmpty {
+                SSHIdentityFileAccess.activateIfNeeded(for: identityFile)
                 arguments += ["-i", expandedHomePath(identityFile)]
             }
 
@@ -915,6 +917,7 @@ struct SSHCommandBuilder {
         if !passwordAuthentication {
             let identityFile = session.identityFile.trimmingCharacters(in: .whitespacesAndNewlines)
             if !identityFile.isEmpty {
+                SSHIdentityFileAccess.activateIfNeeded(for: identityFile)
                 arguments += ["-i", expandedHomePath(identityFile)]
             }
 

@@ -257,6 +257,11 @@ final class TerminalWorkspaceState: ObservableObject {
         !runningProcessSummaries.isEmpty
     }
 
+    func hasRunningProcesses(inTab id: UUID) -> Bool {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return false }
+        return tab.panes.contains { processSessions[$0.id]?.isRunning == true }
+    }
+
     func addTab(kind: Kind) {
         let tab = Tab(panes: [Pane(kind: kind)])
         tabs.append(tab)
@@ -762,6 +767,16 @@ final class SSHTunnelManagerStore: ObservableObject {
 
     func stopAllTunnels() {
         for manager in managers.values where manager.hasActiveOrScheduledWork {
+            manager.stop()
+        }
+    }
+
+    /// Stops the tunnel (including a scheduled reconnect) of a server that is
+    /// being deleted. Without this the ssh process keeps running with no UI
+    /// left to stop it until the app quits.
+    func removeManager(for sessionID: PersistentIdentifier) {
+        guard let manager = managers.removeValue(forKey: sessionID) else { return }
+        if manager.hasActiveOrScheduledWork {
             manager.stop()
         }
     }
