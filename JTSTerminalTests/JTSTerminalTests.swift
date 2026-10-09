@@ -5678,6 +5678,80 @@ struct JTSTerminalTests {
         #expect(!transcript.contains("saved-server-password"))
     }
 
+    @Test func ptySessionKeepsPaneMCPControlAcrossAutomaticReconnect() async throws {
+        let outcome = try await runPaneThatDropsOnce(turnMCPControlOffWhileReconnecting: false)
+
+        #expect(outcome.reconnected)
+        #expect(outcome.mcpControlAfterReconnect)
+        #expect(!outcome.mcpControlAfterStop)
+    }
+
+    @Test func ptySessionDoesNotRestorePaneMCPControlTurnedOffBeforeReconnect() async throws {
+        let outcome = try await runPaneThatDropsOnce(turnMCPControlOffWhileReconnecting: true)
+
+        #expect(outcome.reconnected)
+        #expect(!outcome.mcpControlAfterReconnect)
+    }
+
+    /// Starts a pane whose first launch drops like a lost connection and whose
+    /// automatic reconnect stays up, with the pane-level MCP switch turned on.
+    private func runPaneThatDropsOnce(
+        turnMCPControlOffWhileReconnecting: Bool
+    ) async throws -> (reconnected: Bool, mcpControlAfterReconnect: Bool, mcpControlAfterStop: Bool) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-terminal-mcp-reconnect-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let marker = SSHCommandBuilder.shellQuote(root.appendingPathComponent("first-launch").path)
+        let label = "MCP reconnect test"
+
+        let session = await MainActor.run { InteractiveProcessSession() }
+        let controlAfterStart: Bool = await MainActor.run {
+            session.start(
+                executable: "/bin/sh",
+                arguments: [
+                    "-c",
+                    "if [ -e \(marker) ]; then exec sleep 30; fi; : > \(marker); sleep 0.3; exit 7"
+                ],
+                label: label,
+                autoReconnect: true
+            )
+            session.setMCPControlEnabled(true)
+            return session.isMCPControlEnabled
+        }
+        #expect(controlAfterStart)
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(10))
+        var didTurnOff = false
+        var reconnected = false
+        while clock.now < deadline {
+            let (transcript, isRunning, isReconnectScheduled) = await MainActor.run {
+                (session.transcript, session.isRunning, session.isReconnectScheduled)
+            }
+            if turnMCPControlOffWhileReconnecting, !didTurnOff, isReconnectScheduled {
+                await MainActor.run { session.setMCPControlEnabled(false) }
+                didTurnOff = true
+            }
+            if isRunning,
+               transcript.components(separatedBy: "started PTY session \(label)").count - 1 == 2 {
+                reconnected = true
+                break
+            }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        if turnMCPControlOffWhileReconnecting {
+            #expect(didTurnOff)
+        }
+
+        let controlAfterReconnect = await MainActor.run { session.isMCPControlEnabled }
+        let controlAfterStop: Bool = await MainActor.run {
+            session.stop()
+            return session.isMCPControlEnabled
+        }
+        return (reconnected, controlAfterReconnect, controlAfterStop)
+    }
+
     @Test func ptySessionStopsAutoReconnectAfterTerminalSSHAuthenticationFailure() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("jts-terminal-auth-failure-\(UUID().uuidString)", isDirectory: true)

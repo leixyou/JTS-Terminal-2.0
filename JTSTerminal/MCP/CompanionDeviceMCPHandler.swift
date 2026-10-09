@@ -28,6 +28,7 @@ final class CompanionDeviceMCPHandler {
             guard target.mcpEnabled, target.mcpGrantTargetBinding == targetBinding else {
                 throw WindowsMCPToolError(code: .permissionDenied, message: "Target access was disabled or its identity changed.")
             }
+            try target.requirePersistentMCPControl(for: request.capabilities)
             _ = try runtime.grantStore.authorize(clientID: clientID, clientDisplayIdentity: display,
                 targetID: target.targetID, targetBinding: targetBinding, capabilities: request.capabilities,
                 policy: target.mcpPermissionPolicy, externalDataTypes: request.externalData, implicitProfileAccess: target.mcpEnabled)

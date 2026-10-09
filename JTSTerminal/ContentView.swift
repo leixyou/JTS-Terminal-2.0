@@ -3784,8 +3784,8 @@ private struct SessionEditor: View {
             return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
         case .rdp:
             return language.localized(
-                "Allow registered AI clients to request persistent control",
-                "允许已注册 AI 客户端申请长期控制"
+                "Allow registered AI clients persistent control of this target",
+                "允许已注册 AI 客户端长期控制此目标"
             )
         }
     }
