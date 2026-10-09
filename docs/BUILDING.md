@@ -67,6 +67,13 @@ manifest and rejects development/lab artifacts before embedding. No installer
 binary or release-signing key is stored here. The project's Release setting
 `JTS_REQUIRE_WINDOWS_COMPANION_INSTALLER=1` remains enabled.
 
+## App Store submission
+
+Before uploading a build, work through
+[the App Store release checklist](APP_STORE_RELEASE.md). It lists the signing,
+export-compliance, privacy and App Review items that a local build cannot
+verify.
+
 ## Verification scopes
 
 ```sh
