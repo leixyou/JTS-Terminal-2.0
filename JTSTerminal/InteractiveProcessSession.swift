@@ -83,6 +83,11 @@ final class InteractiveProcessSession: ObservableObject {
     @Published private(set) var structuredCommandActivity = StructuredCommandActivity.idle
 
     private var backend: TerminalProcessBackend?
+    /// The pane-level MCP switch survives this pane's automatic reconnect. The
+    /// reconnect reuses the same frozen launch configuration and starts a fresh
+    /// login shell, so the user's explicit choice still covers the same
+    /// endpoint. Turning the switch off, Stop, or a new launch clears it.
+    private var restoresMCPControlAfterReconnect = false
     private var desiredColumns: UInt16 = 120
     private var desiredRows: UInt16 = 32
     private var credentialSaveAccount: String?
@@ -699,6 +704,8 @@ final class InteractiveProcessSession: ObservableObject {
         replacingTranscript: Bool,
         resetReconnectAttempt: Bool
     ) {
+        let restoresMCPControl = !resetReconnectAttempt &&
+            restoresMCPControlAfterReconnect
         cancelScheduledReconnect()
         stopActiveBackend()
         let launchID = UUID()
@@ -766,6 +773,7 @@ final class InteractiveProcessSession: ObservableObject {
         backend = processBackend
         pid = processBackend.pid
         isRunning = true
+        isMCPControlEnabled = restoresMCPControl
         let pidLabel = processBackend.pid.map { ", pid \($0)" } ?? ""
         appendSessionMessage("started PTY session \(configuration.label)\(pidLabel)")
     }
@@ -788,6 +796,9 @@ final class InteractiveProcessSession: ObservableObject {
 
     func setMCPControlEnabled(_ enabled: Bool) {
         isMCPControlEnabled = enabled && isRunning
+        if !enabled {
+            restoresMCPControlAfterReconnect = false
+        }
     }
 
     func setBroadcastReady(_ enabled: Bool) {
@@ -1191,6 +1202,7 @@ final class InteractiveProcessSession: ObservableObject {
         flushPendingDecodedOutput()
         flushPendingSensitiveOutput()
         let launchOutput = currentLaunchOutput
+        let hadMCPControl = isMCPControlEnabled
         let credentialDeliveryState = credentialDeliverySnapshotter(
             activeAskpassContext
         )
@@ -1278,6 +1290,7 @@ final class InteractiveProcessSession: ObservableObject {
         if shouldReconnect(after: status),
            let configuration = lastLaunchConfiguration {
             scheduleReconnect(after: status, configuration: configuration)
+            restoresMCPControlAfterReconnect = hadMCPControl
         }
     }
 
@@ -2045,6 +2058,7 @@ final class InteractiveProcessSession: ObservableObject {
         reconnectTask = nil
         isReconnectScheduled = false
         reconnectStatus = ""
+        restoresMCPControlAfterReconnect = false
     }
 
     private func cancelPendingSSHStart() {
