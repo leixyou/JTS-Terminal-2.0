@@ -1552,9 +1552,15 @@ struct JTSTerminalTests {
                 as? [[String: Any]]
         )
 
+        // Standard MCP annotations are additive hints outside the 1.2
+        // contract; names, descriptions and input schemas stay identical.
+        let actualLegacyWithoutAnnotations = actualLegacy.map {
+            $0.filter { $0.key != "annotations" }
+        }
+
         #expect(LegacyMCPToolName.allCases.count == 15)
         #expect(actualLegacy.count == 15)
-        #expect(try canonicalJSON(actualLegacy) == canonicalJSON(expectedLegacy))
+        #expect(try canonicalJSON(actualLegacyWithoutAnnotations) == canonicalJSON(expectedLegacy))
 
         #if ENABLE_RDP_2
         let windowsNames = Set(WindowsMCPToolName.allCases.map(\.rawValue))
@@ -1568,6 +1574,42 @@ struct JTSTerminalTests {
         #else
         #expect(tools.count == 15)
         #endif
+    }
+
+    @MainActor
+    @Test func everyMCPToolDeclaresStandardAnnotations() async throws {
+        let container = try ModelContainerFactory.makeContainer(isStoredInMemoryOnly: true)
+        let server = MCPStdioServer(modelContext: ModelContext(container))
+
+        let response = try #require(await server.handleLine(#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#))
+        let result = try #require(try decodedJSONObject(response)["result"] as? [String: Any])
+        let tools = try #require(result["tools"] as? [[String: Any]])
+        var readOnlyTools: Set<String> = []
+        for tool in tools {
+            let name = try #require(tool["name"] as? String)
+            let annotations = try #require(tool["annotations"] as? [String: Any], "\(name) has no annotations")
+            if annotations["readOnlyHint"] as? Bool == true {
+                readOnlyTools.insert(name)
+            } else {
+                #expect(annotations["readOnlyHint"] as? Bool == false, "\(name)")
+                #expect(annotations["destructiveHint"] as? Bool != nil, "\(name)")
+            }
+        }
+
+        var expectedReadOnly: Set<String> = [
+            "jts_list_servers", "jts_list_dir", "jts_read_file", "jts_stat",
+            "jts_list_open_terminals", "jts_terminal_read",
+        ]
+        #if ENABLE_RDP_2
+        expectedReadOnly.formUnion([
+            "jts_list_targets", "jts_desktop_status", "jts_desktop_observe", "jts_desktop_uia",
+        ])
+        #endif
+        #expect(readOnlyTools == expectedReadOnly)
+        #expect(MCPToolAnnotations.kind(forTool: "jts_exec") == .destructive)
+        #expect(MCPToolAnnotations.kind(forTool: "jts_remove") == .destructive)
+        #expect(MCPToolAnnotations.kind(forTool: "jts_mkdir") == .additive(idempotent: true))
+        #expect(MCPToolAnnotations.kind(forTool: "jts_not_a_tool") == nil)
     }
 
     #if ENABLE_RDP_2

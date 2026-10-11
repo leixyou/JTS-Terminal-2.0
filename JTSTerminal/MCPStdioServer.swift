@@ -1728,7 +1728,7 @@ final class MCPStdioServer {
         definitions += WindowsMCPToolRegistry.definitions
         definitions += CompanionDeviceMCPRegistry.definitions
         #endif
-        return definitions
+        return MCPToolAnnotations.annotated(definitions)
     }
 
     private func tool(_ name: String, _ description: String, _ properties: [String: Any], required: [String] = []) -> [String: Any] {
