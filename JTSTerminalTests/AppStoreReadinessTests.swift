@@ -36,6 +36,69 @@ struct AppStoreReadinessTests {
         #expect(updated.contains("model = \"gpt-5.5\""))
     }
 
+    @Test func tomlRegistrationRecognizesCRLFFilesAndKeepsTheirLineEndings() {
+        let existing = "model = \"gpt-5.5\"\r\n\r\n[mcp_servers.jts-terminal]\r\ncommand = \"/tmp/old\"\r\nargs = [\"--old\"]\r\n\r\n[projects.\"/tmp/example\"]\r\ntrust_level = \"trusted\"\r\n"
+        let replacement = "[mcp_servers.jts-terminal]\ncommand = \"/Applications/JTS Terminal.app/Contents/MacOS/JTS Terminal\"\nargs = [\"--mcp\"]\n"
+
+        // The existing table is found, so registration is not appended twice.
+        #expect(MCPClientRegistrar.tomlSection(
+            named: "[mcp_servers.jts-terminal]",
+            in: existing
+        ) == ["command = \"/tmp/old\"", "args = [\"--old\"]", ""])
+
+        let updated = MCPClientRegistrar.replacingTOMLSection(
+            named: "[mcp_servers.jts-terminal]",
+            in: existing,
+            with: replacement
+        )
+        #expect(updated.components(separatedBy: "[mcp_servers.jts-terminal]").count - 1 == 1)
+        #expect(!updated.contains("/tmp/old"))
+        #expect(updated.contains("model = \"gpt-5.5\"\r\n"))
+        #expect(updated.contains("trust_level = \"trusted\"\r\n"))
+        #expect(updated.hasSuffix("\r\n"))
+        // Every line break in the result stays CRLF.
+        #expect(!updated.replacingOccurrences(of: "\r\n", with: "").contains("\n"))
+    }
+
+    @Test func tomlRegistrationKeepsUserKeysAndRefusesAlternateDefinitions() {
+        let section = [
+            "command = \"/old\"",
+            "args = [",
+            "  \"--mcp\",",
+            "]",
+            "# keep this note",
+            "startup_timeout_sec = 30",
+            "enabled = false",
+            "",
+        ]
+        #expect(MCPClientRegistrar.tomlLinesKeepingUserKeys(section) == [
+            "# keep this note",
+            "startup_timeout_sec = 30",
+            "enabled = false",
+        ])
+
+        // The supported table form, including its own sub-tables, is fine.
+        #expect(!MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "[mcp_servers.jts-terminal]\ncommand = \"/x\"\n[mcp_servers.jts-terminal.env]\nA = \"1\"\n"
+        ))
+        #expect(!MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "[mcp_servers.other]\ncommand = \"/opt/jts-terminal\"\n"
+        ))
+        // Inline tables and dotted keys would be defined twice by appending.
+        #expect(MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "[mcp_servers]\njts-terminal = { command = \"/x\" }\n"
+        ))
+        #expect(MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "[mcp_servers]\n\"jts-terminal\".command = \"/x\"\n"
+        ))
+        #expect(MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "mcp_servers.jts-terminal.command = \"/x\"\n"
+        ))
+        #expect(MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "mcp_servers = { jts-terminal = { command = \"/x\" } }\n"
+        ))
+    }
+
     @Test func tomlHeaderNormalizationKeepsDistinctTablesDistinct() {
         #expect(MCPClientRegistrar.normalizedTOMLTableHeader("[mcp_servers.jts-terminal]") == "[mcp_servers.jts-terminal]")
         #expect(MCPClientRegistrar.normalizedTOMLTableHeader("  [ mcp_servers . 'jts-terminal' ]  # note") == "[mcp_servers.jts-terminal]")

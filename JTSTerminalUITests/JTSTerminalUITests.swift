@@ -999,9 +999,9 @@ final class JTSTerminalUITests: XCTestCase {
                 registered.waitForExistence(timeout: 5),
                 "\(clientName) should be shown as registered."
             )
-            XCTAssertFalse(
+            XCTAssertTrue(
                 registered.isEnabled,
-                "\(clientName) must not offer another configuration action."
+                "\(clientName) should open its Reconfigure / Remove submenu."
             )
             XCTAssertFalse(
                 app.menuItems["配置 \(clientName)"].exists,
@@ -1069,13 +1069,25 @@ final class JTSTerminalUITests: XCTestCase {
         )
         authorizationPanel.buttons["Allow"].click()
 
+        let confirmButton = app.dialogs.buttons[
+            "mcp-registration-confirm-button"
+        ].firstMatch
+        XCTAssertTrue(
+            confirmButton.waitForExistence(timeout: 5),
+            "Registration should show the exact jts-terminal change once before writing."
+        )
+        XCTAssertTrue(
+            app.dialogs.textViews["mcp-registration-diff"].firstMatch.exists,
+            "The confirmation should include the reviewed change."
+        )
+        confirmButton.click()
+
         let completionButton = app.dialogs.buttons["OK"].firstMatch
         XCTAssertTrue(
             completionButton.waitForExistence(timeout: 5),
-            "Registration should finish without a file picker, replace prompt, or second apply step."
+            "Registration should finish without a file picker, replace prompt, or a second confirmation."
         )
         XCTAssertFalse(app.dialogs.buttons["Replace"].exists)
-        XCTAssertFalse(app.dialogs.buttons["Apply This Diff"].exists)
         completionButton.click()
 
         openMCPMenu()
@@ -1086,7 +1098,10 @@ final class JTSTerminalUITests: XCTestCase {
             registeredItem.waitForExistence(timeout: 5),
             "The current launch should immediately show the canonical endpoint as registered."
         )
-        XCTAssertFalse(registeredItem.isEnabled)
+        XCTAssertFalse(
+            app.menuItems["Configure Codex Desktop"].exists,
+            "A registered client offers Reconfigure in its submenu, not a duplicate configure action."
+        )
 
         let storedConfiguration = try String(
             contentsOf: configurationURL,
@@ -1124,10 +1139,6 @@ final class JTSTerminalUITests: XCTestCase {
         XCTAssertTrue(
             relaunchedRegisteredItem.waitForExistence(timeout: 5),
             "The sandboxed app must restore the canonical-directory bookmark after relaunch."
-        )
-        XCTAssertFalse(
-            relaunchedRegisteredItem.isEnabled,
-            "A recovered registration must remain non-repeatable."
         )
         XCTAssertFalse(
             app.menuItems["Configure Codex Desktop"].exists,

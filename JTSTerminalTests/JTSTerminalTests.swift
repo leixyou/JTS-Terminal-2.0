@@ -1552,9 +1552,15 @@ struct JTSTerminalTests {
                 as? [[String: Any]]
         )
 
+        // Standard MCP annotations are additive hints outside the 1.2
+        // contract; names, descriptions and input schemas stay identical.
+        let actualLegacyWithoutAnnotations = actualLegacy.map {
+            $0.filter { $0.key != "annotations" }
+        }
+
         #expect(LegacyMCPToolName.allCases.count == 15)
         #expect(actualLegacy.count == 15)
-        #expect(try canonicalJSON(actualLegacy) == canonicalJSON(expectedLegacy))
+        #expect(try canonicalJSON(actualLegacyWithoutAnnotations) == canonicalJSON(expectedLegacy))
 
         #if ENABLE_RDP_2
         let windowsNames = Set(WindowsMCPToolName.allCases.map(\.rawValue))
@@ -1568,6 +1574,42 @@ struct JTSTerminalTests {
         #else
         #expect(tools.count == 15)
         #endif
+    }
+
+    @MainActor
+    @Test func everyMCPToolDeclaresStandardAnnotations() async throws {
+        let container = try ModelContainerFactory.makeContainer(isStoredInMemoryOnly: true)
+        let server = MCPStdioServer(modelContext: ModelContext(container))
+
+        let response = try #require(await server.handleLine(#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#))
+        let result = try #require(try decodedJSONObject(response)["result"] as? [String: Any])
+        let tools = try #require(result["tools"] as? [[String: Any]])
+        var readOnlyTools: Set<String> = []
+        for tool in tools {
+            let name = try #require(tool["name"] as? String)
+            let annotations = try #require(tool["annotations"] as? [String: Any], "\(name) has no annotations")
+            if annotations["readOnlyHint"] as? Bool == true {
+                readOnlyTools.insert(name)
+            } else {
+                #expect(annotations["readOnlyHint"] as? Bool == false, "\(name)")
+                #expect(annotations["destructiveHint"] as? Bool != nil, "\(name)")
+            }
+        }
+
+        var expectedReadOnly: Set<String> = [
+            "jts_list_servers", "jts_list_dir", "jts_read_file", "jts_stat",
+            "jts_list_open_terminals", "jts_terminal_read",
+        ]
+        #if ENABLE_RDP_2
+        expectedReadOnly.formUnion([
+            "jts_list_targets", "jts_desktop_status", "jts_desktop_observe", "jts_desktop_uia",
+        ])
+        #endif
+        #expect(readOnlyTools == expectedReadOnly)
+        #expect(MCPToolAnnotations.kind(forTool: "jts_exec") == .destructive)
+        #expect(MCPToolAnnotations.kind(forTool: "jts_remove") == .destructive)
+        #expect(MCPToolAnnotations.kind(forTool: "jts_mkdir") == .additive(idempotent: true))
+        #expect(MCPToolAnnotations.kind(forTool: "jts_not_a_tool") == nil)
     }
 
     #if ENABLE_RDP_2
@@ -3382,6 +3424,209 @@ struct JTSTerminalTests {
         #expect(!FileManager.default.fileExists(atPath: root
             .appendingPathComponent("Library/Application Support/JTS Terminal/MCP/jts-terminal-mcp-proxy")
             .path))
+    }
+
+    @Test func jsonRegistrationKeepsUserKeysAndRefusesUnexpectedShapes() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-terminal-json-merge-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let registrar = MCPClientRegistrar(homeDirectory: root)
+        let commandPath = try makeFakeJTSExecutable(
+            in: root.appendingPathComponent("Installed", isDirectory: true)
+        )
+        let cursorURL = registrar.cursorConfigURL
+        try FileManager.default.createDirectory(
+            at: cursorURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "mcpServers": {
+            "jts-terminal": {
+              "command": "/old/path",
+              "args": ["--mcp"],
+              "env": {"JTS_LOG": "1"},
+              "disabled": false
+            }
+          }
+        }
+        """.write(to: cursorURL, atomically: true, encoding: .utf8)
+
+        let result = try registrar.registerCursor(commandPath: commandPath)
+        let text = try String(contentsOf: cursorURL, encoding: .utf8)
+        let object = try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+        let entry = try #require((object["mcpServers"] as? [String: Any])?["jts-terminal"] as? [String: Any])
+        #expect(entry["command"] as? String == commandPath)
+        #expect(entry["args"] as? [String] == MCPClientRegistrar.arguments(registrationID: result.registrationID))
+        #expect(entry["type"] as? String == "stdio")
+        // Keys the user added to the entry survive an update.
+        #expect((entry["env"] as? [String: Any])?["JTS_LOG"] as? String == "1")
+        #expect(entry["disabled"] as? Bool == false)
+        // Paths are written as typed, without escaped slashes.
+        #expect(!text.contains("\\/"))
+
+        // A non-object mcpServers is reported, never replaced.
+        let wrongShape = Data(#"{"mcpServers": ["jts-terminal"]}"#.utf8)
+        try wrongShape.write(to: cursorURL)
+        #expect(throws: MCPClientRegistrationError.self) {
+            try registrar.registerCursor(commandPath: commandPath)
+        }
+        #expect(try Data(contentsOf: cursorURL) == wrongShape)
+    }
+
+    @Test func codexRegistrationKeepsUserKeysBacksUpAndCanBeRemoved() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-terminal-codex-remove-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let registrar = MCPClientRegistrar(homeDirectory: root)
+        let commandPath = try makeFakeJTSExecutable(
+            in: root.appendingPathComponent("Installed", isDirectory: true)
+        )
+        let codexURL = registrar.codexConfigURL
+        try FileManager.default.createDirectory(
+            at: codexURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let original = """
+        model = "gpt-5.5"
+
+        [mcp_servers.jts-terminal]
+        command = "/old/JTS Terminal"
+        args = ["--mcp"]
+        startup_timeout_sec = 30
+
+        [projects."/tmp/example"]
+        trust_level = "trusted"
+
+        """
+        try original.write(to: codexURL, atomically: true, encoding: .utf8)
+
+        let result = try registrar.register(.codexDesktop, commandPath: commandPath)
+        let registered = try String(contentsOf: codexURL, encoding: .utf8)
+        #expect(!registered.contains("/old/JTS Terminal"))
+        #expect(registered.contains("startup_timeout_sec = 30"))
+        #expect(registered.contains("trust_level = \"trusted\""))
+        #expect(registered.components(separatedBy: "[mcp_servers.jts-terminal]").count - 1 == 1)
+        #expect(registrar.registrationStatus(for: .codexDesktop, commandPath: commandPath).state == .registered)
+
+        // The previous file is kept privately next to the config.
+        let backupURL = MCPClientRegistrar.backupURL(for: codexURL)
+        #expect(try String(contentsOf: backupURL, encoding: .utf8) == original)
+
+        // Removing takes out the entry, revokes the ID and keeps other content.
+        #expect(try registrar.unregister(.codexCLI))
+        let removed = try String(contentsOf: codexURL, encoding: .utf8)
+        #expect(!removed.contains("[mcp_servers.jts-terminal]"))
+        #expect(removed.contains("model = \"gpt-5.5\""))
+        #expect(removed.contains("trust_level = \"trusted\""))
+        #expect(try String(contentsOf: backupURL, encoding: .utf8) == registered)
+        #expect(try registrar.registrationRegistry.resolve(registrationID: result.registrationID) == nil)
+        #expect(registrar.registrationStatus(for: .codexDesktop, commandPath: commandPath).state == .notRegistered)
+        #expect(try !registrar.unregister(.codexDesktop))
+
+        // An inline definition is reported instead of being defined twice.
+        let inline = "[mcp_servers]\njts-terminal = { command = \"/x\", args = [] }\n"
+        try inline.write(to: codexURL, atomically: true, encoding: .utf8)
+        #expect(throws: MCPClientRegistrationError.self) {
+            try registrar.register(.codexDesktop, commandPath: commandPath)
+        }
+        #expect(try String(contentsOf: codexURL, encoding: .utf8) == inline)
+    }
+
+    @Test func registrationResetMovesRecordsAsideAndRevokesEveryID() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-terminal-registry-reset-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let registrar = MCPClientRegistrar(homeDirectory: root)
+        let commandPath = try makeFakeJTSExecutable(
+            in: root.appendingPathComponent("Installed", isDirectory: true)
+        )
+        let result = try registrar.registerCursor(commandPath: commandPath)
+        #expect(try registrar.registrationRegistry.resolve(registrationID: result.registrationID) != nil)
+
+        // A damaged registry blocks everything until it is moved aside.
+        try Data("not json".utf8).write(to: registrar.registrationRegistryURL)
+        #expect(throws: MCPClientRegistrationRegistryError.self) {
+            try registrar.registrationRegistry.resolve(registrationID: result.registrationID)
+        }
+
+        let aside = try #require(try registrar.registrationRegistry.moveAside())
+        #expect(FileManager.default.fileExists(atPath: aside.path))
+        try registrar.registrationEvidenceStore.moveAside()
+        #expect(try registrar.registrationRegistry.resolve(registrationID: result.registrationID) == nil)
+        #expect(registrar.registrationStatus(for: .cursor, commandPath: commandPath).state == .needsUpdate)
+
+        // Configuring again issues a fresh, working registration.
+        let again = try registrar.registerCursor(commandPath: commandPath)
+        #expect(again.registrationID != result.registrationID)
+        #expect(registrar.registrationStatus(for: .cursor, commandPath: commandPath).state == .registered)
+    }
+
+    @Test func claudeCodeAllowRuleIsAddedOnceAndKeepsExistingSettings() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-terminal-claude-allow-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let registrar = MCPClientRegistrar(homeDirectory: root)
+        let settingsURL = registrar.claudeCodeSettingsURL
+
+        #expect(settingsURL.path == root.appendingPathComponent(".claude/settings.json").path)
+        #expect(MCPClientRegistrar.claudeCodeToolAllowRule == "mcp__jts-terminal")
+
+        // A missing settings file is created with only the rule.
+        #expect(try !registrar.claudeCodeAllowsAllTools())
+        #expect(try registrar.allowAllToolsInClaudeCode())
+        let created = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: settingsURL)) as? [String: Any])
+        #expect((created["permissions"] as? [String: Any])?["allow"] as? [String] == ["mcp__jts-terminal"])
+        #expect(try registrar.claudeCodeAllowsAllTools())
+
+        // Running it again changes nothing.
+        let before = try Data(contentsOf: settingsURL)
+        #expect(try !registrar.allowAllToolsInClaudeCode())
+        #expect(try Data(contentsOf: settingsURL) == before)
+
+        // Existing settings and rules are kept; paths keep unescaped slashes.
+        try """
+        {
+          "model": "opus",
+          "env": {"PATH_HINT": "/usr/local/bin"},
+          "permissions": {
+            "allow": ["Bash(npm run test:*)"],
+            "deny": ["mcp__jts-terminal__jts_remove"]
+          }
+        }
+        """.write(to: settingsURL, atomically: true, encoding: .utf8)
+        #expect(try registrar.allowAllToolsInClaudeCode())
+        let mergedText = try String(contentsOf: settingsURL, encoding: .utf8)
+        let merged = try #require(JSONSerialization.jsonObject(with: Data(mergedText.utf8)) as? [String: Any])
+        let permissions = try #require(merged["permissions"] as? [String: Any])
+        #expect(merged["model"] as? String == "opus")
+        #expect((merged["env"] as? [String: Any])?["PATH_HINT"] as? String == "/usr/local/bin")
+        #expect(permissions["allow"] as? [String] == ["Bash(npm run test:*)", "mcp__jts-terminal"])
+        #expect(permissions["deny"] as? [String] == ["mcp__jts-terminal__jts_remove"])
+        #expect(mergedText.contains("/usr/local/bin"))
+
+        // An equivalent wildcard rule already covers the server.
+        #expect(MCPClientRegistrar.claudeCodeAllowRulesCoverServer(
+            ["permissions": ["allow": ["mcp__jts-terminal__*"]]]
+        ))
+        #expect(!MCPClientRegistrar.claudeCodeAllowRulesCoverServer(
+            ["permissions": ["allow": ["mcp__jts-terminal__jts_exec"]]]
+        ))
+
+        // Unreadable or unexpected settings are never overwritten.
+        let invalid = Data("{ \"permissions\": ".utf8)
+        try invalid.write(to: settingsURL)
+        #expect(throws: MCPClientRegistrationError.self) {
+            try registrar.allowAllToolsInClaudeCode()
+        }
+        #expect(try Data(contentsOf: settingsURL) == invalid)
+
+        let wrongShape = Data(#"{"permissions":{"allow":"mcp__jts-terminal__jts_exec"}}"#.utf8)
+        try wrongShape.write(to: settingsURL)
+        #expect(throws: MCPClientRegistrationError.self) {
+            try registrar.allowAllToolsInClaudeCode()
+        }
+        #expect(try Data(contentsOf: settingsURL) == wrongShape)
     }
 
     @Test func mcpClientRegistrarRegistersClaudeCLIAndCodexCLI() async throws {

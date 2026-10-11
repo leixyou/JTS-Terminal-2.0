@@ -298,7 +298,15 @@ final class MCPStdioServer {
                 let registrar = MCPClientRegistrar()
                 let registration: MCPClientRegistrationRecord?
                 if let requestedID = requestedRegistrationID(arguments: CommandLine.arguments) {
-                    registration = try? registrar.registrationRegistry.resolve(registrationID: requestedID)
+                    do {
+                        registration = try registrar.registrationRegistry.resolve(registrationID: requestedID)
+                        if registration == nil {
+                            fputs("JTS Terminal MCP: this client's registration ID is unknown. In JTS Terminal choose MCP > the client > Reconfigure.\n", stderr)
+                        }
+                    } catch {
+                        registration = nil
+                        fputs("JTS Terminal MCP: the registration registry could not be read (\(error.localizedDescription)). In JTS Terminal choose MCP > Reset MCP Client Registrations, then configure the client again.\n", stderr)
+                    }
                 } else {
                     registration = nil
                 }
@@ -466,7 +474,7 @@ final class MCPStdioServer {
         #if ENABLE_RDP_2
         guard clientRegistration != nil else {
             throw MCPToolFailure(
-                message: "CLIENT_REGISTRATION_REQUIRED: Start JTS Terminal MCP with a valid --mcp-client-registration issued by the in-app registrar. Self-reported initialize.clientInfo is not an authorization identity."
+                message: "CLIENT_REGISTRATION_REQUIRED: Start JTS Terminal MCP with a valid --mcp-client-registration issued by the in-app registrar. Self-reported initialize.clientInfo is not an authorization identity. Ask the user to open JTS Terminal and choose MCP > this client > Reconfigure; if that fails, MCP > Reset MCP Client Registrations and configure the client again."
             )
         }
         #endif
@@ -1728,7 +1736,7 @@ final class MCPStdioServer {
         definitions += WindowsMCPToolRegistry.definitions
         definitions += CompanionDeviceMCPRegistry.definitions
         #endif
-        return definitions
+        return MCPToolAnnotations.annotated(definitions)
     }
 
     private func tool(_ name: String, _ description: String, _ properties: [String: Any], required: [String] = []) -> [String: Any] {
