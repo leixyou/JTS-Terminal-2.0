@@ -409,6 +409,18 @@ private struct JTSTerminalCommands: Commands {
                 .help(mcpRegistrationMenuHelp(for: status))
             }
 
+            Button(language.localized(
+                "Allow JTS Tools in Claude Code…",
+                "在 Claude Code 中允许 JTS 工具…"
+            )) {
+                MCPMenuActions.allowAllToolsInClaudeCode(language: language)
+            }
+            .disabled(!mcpRegistrationStatus(for: .claudeCLI).isRegistered)
+            .help(language.localized(
+                "Lets Claude Code run every JTS Terminal tool without asking each time. JTS Terminal's own permissions still apply.",
+                "让 Claude Code 使用所有 JTS Terminal 工具时不再逐次询问。JTS Terminal 自身的权限仍然有效。"
+            ))
+
             Divider()
 
             Toggle(language.localized("Enable Terminal Bridge", "启用终端 Bridge"), isOn: $isTerminalMCPBridgeEnabled)
@@ -990,6 +1002,7 @@ enum MCPMenuActions {
             case .success(let registration):
                 finishRegistration(
                     registration,
+                    registrar: registrar,
                     language: language
                 )
                 return
@@ -1015,7 +1028,7 @@ enum MCPMenuActions {
                 destination: configurationURL,
                 registrar: registrar
             )
-            finishRegistration(registration, language: language)
+            finishRegistration(registration, registrar: registrar, language: language)
             return
         } catch {
             guard MCPClientConfigurationAuthorizationErrorClassifier
@@ -1068,7 +1081,7 @@ enum MCPMenuActions {
                     scopeURL: authorizedDirectory
                 )
             try registrar.configurationAccessStore.persist(preparedAccess)
-            finishRegistration(registration, language: language)
+            finishRegistration(registration, registrar: registrar, language: language)
         } catch {
             showRegistrationFailure(error, language: language)
         }
@@ -1120,6 +1133,7 @@ enum MCPMenuActions {
 
     private static func finishRegistration(
         _ registration: MCPClientRegistrationResult,
+        registrar: MCPClientRegistrar,
         language: AppLanguage
     ) {
         UserDefaults.standard.set(
@@ -1127,15 +1141,126 @@ enum MCPMenuActions {
             forKey: TerminalMCPBridgeLaunchPolicy.userDefaultsKey
         )
         MCPClientRegistrationStatusRefresh.bump()
+        let title = language.localized("MCP Configured", "MCP 配置完成")
+        let message = registration.displayMessage(language: language)
+        if registration.client == .claudeCLI,
+           claudeCodeAllowsAllTools(registrar: registrar) == false {
+            offerClaudeCodeToolAllowRule(
+                title: title,
+                leadingMessage: message,
+                registrar: registrar,
+                language: language
+            )
+            return
+        }
         showAlert(
-            title: language.localized(
-                "MCP Configured",
-                "MCP 配置完成"
-            ),
-            message: registration.displayMessage(language: language),
+            title: title,
+            message: message,
             language: language,
             style: .informational
         )
+    }
+
+    /// Menu entry for a Claude CLI registration made earlier.
+    static func allowAllToolsInClaudeCode(language: AppLanguage) {
+        let registrar = MCPClientRegistrar()
+        if claudeCodeAllowsAllTools(registrar: registrar) == true {
+            showAlert(
+                title: language.localized("Already Allowed", "已允许"),
+                message: language.localized(
+                    "Claude Code already runs JTS Terminal tools without asking (\(MCPClientRegistrar.claudeCodeToolAllowRule) in ~/.claude/settings.json).",
+                    "Claude Code 已经无需确认即可使用 JTS Terminal 工具（~/.claude/settings.json 中已有 \(MCPClientRegistrar.claudeCodeToolAllowRule)）。"
+                ),
+                language: language,
+                style: .informational
+            )
+            return
+        }
+        offerClaudeCodeToolAllowRule(
+            title: language.localized(
+                "Allow JTS Terminal Tools in Claude Code",
+                "在 Claude Code 中允许 JTS Terminal 工具"
+            ),
+            leadingMessage: nil,
+            registrar: registrar,
+            language: language
+        )
+    }
+
+    /// Reads Claude Code's user settings within the Claude CLI folder grant.
+    /// Returns nil when the settings cannot be read.
+    private static func claudeCodeAllowsAllTools(registrar: MCPClientRegistrar) -> Bool? {
+        let scoped = registrar.configurationAccessStore.withAccess(for: .claudeCLI) { configurationURL in
+            try? registrar.claudeCodeAllowsAllTools(
+                settingsURL: MCPClientRegistrar.claudeCodeSettingsURL(
+                    besideClaudeCLIConfiguration: configurationURL
+                )
+            )
+        }
+        if case .value(let allowed) = scoped {
+            return allowed
+        }
+        return try? registrar.claudeCodeAllowsAllTools()
+    }
+
+    private static func offerClaudeCodeToolAllowRule(
+        title: String,
+        leadingMessage: String?,
+        registrar: MCPClientRegistrar,
+        language: AppLanguage
+    ) {
+        let offer = language.localized(
+            "Claude Code asks before every JTS Terminal tool call. Allow all JTS Terminal tools without asking? This adds \"\(MCPClientRegistrar.claudeCodeToolAllowRule)\" to permissions.allow in ~/.claude/settings.json for every project. Claude Code will then run commands and change or delete files on your MCP-enabled servers without confirming each call. JTS Terminal's own server, pane and Windows permissions still apply. You can remove the rule later with /permissions in Claude Code.",
+            "Claude Code 每次调用 JTS Terminal 工具前都会询问。要允许所有 JTS Terminal 工具无需确认吗？这会在 ~/.claude/settings.json 的 permissions.allow 中加入 \"\(MCPClientRegistrar.claudeCodeToolAllowRule)\"，对所有项目生效。之后 Claude Code 在已启用 MCP 的服务器上执行命令、修改或删除文件时都不会再逐次确认。JTS Terminal 自身的服务器、窗格和 Windows 权限仍然有效。以后可在 Claude Code 中用 /permissions 删除这条规则。"
+        )
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = title
+        alert.informativeText = [leadingMessage, offer]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        alert.addButton(withTitle: language.localized("Keep Asking", "继续询问"))
+        alert.addButton(withTitle: language.localized("Allow All Tools", "全部允许"))
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+
+        let scoped = registrar.configurationAccessStore.withAccess(for: .claudeCLI) { configurationURL in
+            Result {
+                try registrar.allowAllToolsInClaudeCode(
+                    settingsURL: MCPClientRegistrar.claudeCodeSettingsURL(
+                        besideClaudeCLIConfiguration: configurationURL
+                    )
+                )
+            }
+        }
+        let outcome: Result<Bool, Error>
+        if case .value(let result) = scoped {
+            outcome = result
+        } else {
+            outcome = Result { try registrar.allowAllToolsInClaudeCode() }
+        }
+
+        switch outcome {
+        case .success:
+            showAlert(
+                title: language.localized("Claude Code Updated", "Claude Code 已更新"),
+                message: language.localized(
+                    "Claude Code now runs JTS Terminal tools without asking. Start a new Claude Code session to apply it.",
+                    "Claude Code 现在无需确认即可使用 JTS Terminal 工具。请开启新的 Claude Code 会话以生效。"
+                ),
+                language: language,
+                style: .informational
+            )
+        case .failure(let error):
+            showAlert(
+                title: language.localized("Claude Code Not Updated", "未能更新 Claude Code"),
+                message: language.localized(
+                    "\(error.localizedDescription)\n\nYou can add the rule yourself: run /permissions in Claude Code and allow \(MCPClientRegistrar.claudeCodeToolAllowRule).",
+                    "\(error.localizedDescription)\n\n也可以手动添加：在 Claude Code 中运行 /permissions，允许 \(MCPClientRegistrar.claudeCodeToolAllowRule)。"
+                ),
+                language: language,
+                style: .warning
+            )
+        }
     }
 
     private static func showRegistrationFailure(

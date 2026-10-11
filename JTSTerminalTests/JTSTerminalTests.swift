@@ -3426,6 +3426,73 @@ struct JTSTerminalTests {
             .path))
     }
 
+    @Test func claudeCodeAllowRuleIsAddedOnceAndKeepsExistingSettings() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-terminal-claude-allow-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let registrar = MCPClientRegistrar(homeDirectory: root)
+        let settingsURL = registrar.claudeCodeSettingsURL
+
+        #expect(settingsURL.path == root.appendingPathComponent(".claude/settings.json").path)
+        #expect(MCPClientRegistrar.claudeCodeToolAllowRule == "mcp__jts-terminal")
+
+        // A missing settings file is created with only the rule.
+        #expect(try !registrar.claudeCodeAllowsAllTools())
+        #expect(try registrar.allowAllToolsInClaudeCode())
+        let created = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: settingsURL)) as? [String: Any])
+        #expect((created["permissions"] as? [String: Any])?["allow"] as? [String] == ["mcp__jts-terminal"])
+        #expect(try registrar.claudeCodeAllowsAllTools())
+
+        // Running it again changes nothing.
+        let before = try Data(contentsOf: settingsURL)
+        #expect(try !registrar.allowAllToolsInClaudeCode())
+        #expect(try Data(contentsOf: settingsURL) == before)
+
+        // Existing settings and rules are kept; paths keep unescaped slashes.
+        try """
+        {
+          "model": "opus",
+          "env": {"PATH_HINT": "/usr/local/bin"},
+          "permissions": {
+            "allow": ["Bash(npm run test:*)"],
+            "deny": ["mcp__jts-terminal__jts_remove"]
+          }
+        }
+        """.write(to: settingsURL, atomically: true, encoding: .utf8)
+        #expect(try registrar.allowAllToolsInClaudeCode())
+        let mergedText = try String(contentsOf: settingsURL, encoding: .utf8)
+        let merged = try #require(JSONSerialization.jsonObject(with: Data(mergedText.utf8)) as? [String: Any])
+        let permissions = try #require(merged["permissions"] as? [String: Any])
+        #expect(merged["model"] as? String == "opus")
+        #expect((merged["env"] as? [String: Any])?["PATH_HINT"] as? String == "/usr/local/bin")
+        #expect(permissions["allow"] as? [String] == ["Bash(npm run test:*)", "mcp__jts-terminal"])
+        #expect(permissions["deny"] as? [String] == ["mcp__jts-terminal__jts_remove"])
+        #expect(mergedText.contains("/usr/local/bin"))
+
+        // An equivalent wildcard rule already covers the server.
+        #expect(MCPClientRegistrar.claudeCodeAllowRulesCoverServer(
+            ["permissions": ["allow": ["mcp__jts-terminal__*"]]]
+        ))
+        #expect(!MCPClientRegistrar.claudeCodeAllowRulesCoverServer(
+            ["permissions": ["allow": ["mcp__jts-terminal__jts_exec"]]]
+        ))
+
+        // Unreadable or unexpected settings are never overwritten.
+        let invalid = Data("{ \"permissions\": ".utf8)
+        try invalid.write(to: settingsURL)
+        #expect(throws: MCPClientRegistrationError.self) {
+            try registrar.allowAllToolsInClaudeCode()
+        }
+        #expect(try Data(contentsOf: settingsURL) == invalid)
+
+        let wrongShape = Data(#"{"permissions":{"allow":"mcp__jts-terminal__jts_exec"}}"#.utf8)
+        try wrongShape.write(to: settingsURL)
+        #expect(throws: MCPClientRegistrationError.self) {
+            try registrar.allowAllToolsInClaudeCode()
+        }
+        #expect(try Data(contentsOf: settingsURL) == wrongShape)
+    }
+
     @Test func mcpClientRegistrarRegistersClaudeCLIAndCodexCLI() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("jts-terminal-mcp-cli-\(UUID().uuidString)", isDirectory: true)

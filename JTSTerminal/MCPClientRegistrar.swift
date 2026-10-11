@@ -1077,6 +1077,86 @@ nonisolated struct MCPClientRegistrar {
         try register(.claudeCLI, commandPath: commandPath)
     }
 
+    /// Claude Code permission rule that matches every tool of this server.
+    static let claudeCodeToolAllowRule = "mcp__\(serverName)"
+
+    /// Claude Code reads permission rules from its user settings file, not
+    /// from `~/.claude.json` where the server itself is registered.
+    var claudeCodeSettingsURL: URL {
+        Self.claudeCodeSettingsURL(besideClaudeCLIConfiguration: claudeCLIConfigURL)
+    }
+
+    /// `~/.claude/settings.json` next to a resolved `~/.claude.json`, so the
+    /// Claude CLI folder authorization (the home folder) also covers it.
+    static func claudeCodeSettingsURL(besideClaudeCLIConfiguration url: URL) -> URL {
+        url.standardizedFileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent("settings.json")
+    }
+
+    /// Whether Claude Code already runs every jts-terminal tool without asking.
+    func claudeCodeAllowsAllTools(settingsURL: URL? = nil) throws -> Bool {
+        let url = settingsURL ?? claudeCodeSettingsURL
+        let state = try configurationFileState(at: url)
+        let root = try readJSONObject(data: state.data ?? Data(), path: url.path)
+        return Self.claudeCodeAllowRulesCoverServer(root)
+    }
+
+    /// Adds the server-wide allow rule to Claude Code's user settings after
+    /// the user explicitly chose it. Every other setting and rule is kept, and
+    /// a deny rule the user wrote still wins in Claude Code. Returns false when
+    /// an equivalent rule already exists.
+    @discardableResult
+    func allowAllToolsInClaudeCode(settingsURL: URL? = nil) throws -> Bool {
+        let url = settingsURL ?? claudeCodeSettingsURL
+        let state = try configurationFileState(at: url)
+        var root = try readJSONObject(data: state.data ?? Data(), path: url.path)
+        guard !Self.claudeCodeAllowRulesCoverServer(root) else { return false }
+
+        var permissions: [String: Any] = [:]
+        if let existing = root["permissions"] {
+            guard let dictionary = existing as? [String: Any] else {
+                throw MCPClientRegistrationError.invalidConfigShape(path: url.path)
+            }
+            permissions = dictionary
+        }
+        var allow: [Any] = []
+        if let existing = permissions["allow"] {
+            guard let rules = existing as? [Any] else {
+                throw MCPClientRegistrationError.invalidConfigShape(path: url.path)
+            }
+            allow = rules
+        }
+        allow.append(Self.claudeCodeToolAllowRule)
+        permissions["allow"] = allow
+        root["permissions"] = permissions
+
+        var data = try JSONSerialization.data(
+            withJSONObject: root,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        data.append(0x0A)
+        try fileManager.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try write(data, to: url, expectedSnapshot: state.snapshot)
+        return true
+    }
+
+    static func claudeCodeAllowRulesCoverServer(_ root: [String: Any]) -> Bool {
+        guard let permissions = root["permissions"] as? [String: Any],
+              let allow = permissions["allow"] as? [Any] else {
+            return false
+        }
+        let rules = Set(allow.compactMap {
+            ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        })
+        return rules.contains(claudeCodeToolAllowRule)
+            || rules.contains("\(claudeCodeToolAllowRule)__*")
+    }
+
     func registerAntigravity(commandPath: String) throws -> MCPClientRegistrationResult {
         try register(.antigravity, commandPath: commandPath)
     }
