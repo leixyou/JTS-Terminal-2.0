@@ -208,13 +208,25 @@ nonisolated enum MCPClientRegistrationRegistryError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .corruptRegistry:
-            return "The MCP client registration registry is damaged. Access remains disabled until registrations are recreated."
+            return AppLanguage.localizedForStoredLanguage(
+                "The MCP client registration registry is damaged. AI client access remains disabled.",
+                "MCP 客户端注册记录已损坏。AI 客户端访问保持禁用。"
+            )
         case .insecurePermissions:
-            return "The MCP client registration registry is not private (0600). Access remains disabled."
+            return AppLanguage.localizedForStoredLanguage(
+                "The MCP client registration registry is not private (0600). AI client access remains disabled.",
+                "MCP 客户端注册记录不是私有文件（0600）。AI 客户端访问保持禁用。"
+            )
         case .invalidRecord:
-            return "The MCP client registration registry contains an invalid or duplicate identity. Access remains disabled."
+            return AppLanguage.localizedForStoredLanguage(
+                "The MCP client registration registry contains an invalid or duplicate identity. AI client access remains disabled.",
+                "MCP 客户端注册记录包含无效或重复的身份。AI 客户端访问保持禁用。"
+            )
         case .previewChanged:
-            return "The MCP client configuration changed while JTS Terminal was preparing the update. Choose Configure again so JTS Terminal can merge the latest settings safely."
+            return AppLanguage.localizedForStoredLanguage(
+                "The MCP client configuration changed while JTS Terminal was preparing the update. Choose Configure again so JTS Terminal can merge the latest settings safely.",
+                "JTS Terminal 准备更新时，MCP 客户端配置被修改了。请再次选择“配置”，JTS Terminal 会安全合并最新设置。"
+            )
         }
     }
 }
@@ -428,20 +440,38 @@ nonisolated enum MCPClientRegistrationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidJSON(let path):
-            return "MCP config is not valid JSON: \(path)"
+            return AppLanguage.localizedForStoredLanguage(
+                "MCP config is not valid JSON, so JTS Terminal left it unchanged: \(path). Remove comments or trailing commas, then choose Configure again.",
+                "MCP 配置不是有效的 JSON，JTS Terminal 未修改它：\(path)。请删除其中的注释或多余逗号后再选择“配置”。"
+            )
         case .invalidConfigShape(let path):
-            return "MCP config must be a JSON object: \(path)"
+            return AppLanguage.localizedForStoredLanguage(
+                "MCP config has an unexpected structure, so JTS Terminal left it unchanged: \(path). The file and its mcpServers or permissions entries must be JSON objects.",
+                "MCP 配置结构不符合预期，JTS Terminal 未修改它：\(path)。文件本身以及其中的 mcpServers 或 permissions 都必须是 JSON 对象。"
+            )
         case .unsafeConfigurationTopology(let path):
-            return "MCP config must be a regular file with exactly one hard link, not a symbolic link or linked alias: \(path)"
+            return AppLanguage.localizedForStoredLanguage(
+                "MCP config must be a regular file with exactly one hard link, not a symbolic link or linked alias: \(path). If a dotfile manager links this file, add the jts-terminal entry by hand.",
+                "MCP 配置必须是只有一个硬链接的普通文件，不能是符号链接或替身：\(path)。如果它由 dotfile 管理工具链接而来，请手动添加 jts-terminal 条目。"
+            )
         case .insecurePermissions(let path):
-            return "MCP config permissions could not be restricted to the current user: \(path)"
+            return AppLanguage.localizedForStoredLanguage(
+                "MCP config permissions could not be restricted to the current user: \(path)",
+                "无法把 MCP 配置的权限限制为仅当前用户：\(path)"
+            )
         case .commitRecoveryRequired(let path, let recoveryPath):
-            return "MCP config changed during atomic commit and could not be restored safely: \(path). The displaced file was preserved at \(recoveryPath)."
+            return AppLanguage.localizedForStoredLanguage(
+                "MCP config changed during atomic commit and could not be restored safely: \(path). The displaced file was preserved at \(recoveryPath).",
+                "MCP 配置在原子写入过程中被修改，无法安全恢复：\(path)。被替换的文件已保留在 \(recoveryPath)。"
+            )
         case .unexpectedConfigurationAuthorization(
             let expectedDirectory,
             let selectedDirectory
         ):
-            return "JTS Terminal only accepts the MCP client's canonical configuration directory. Expected \(expectedDirectory), received \(selectedDirectory)."
+            return AppLanguage.localizedForStoredLanguage(
+                "JTS Terminal only accepts the MCP client's canonical configuration directory. Expected \(expectedDirectory), received \(selectedDirectory). If that folder does not exist yet, open the AI client once so it creates it, then choose Configure again.",
+                "JTS Terminal 只接受 MCP 客户端的标准配置目录。应为 \(expectedDirectory)，实际为 \(selectedDirectory)。如果该目录还不存在，请先打开一次对应的 AI 客户端让它创建目录，然后再选择“配置”。"
+            )
         }
     }
 }
@@ -1176,18 +1206,28 @@ nonisolated struct MCPClientRegistrar {
             data: existingData ?? Data(),
             path: preview.destinationURL.path
         )
-        var mcpServers = root["mcpServers"] as? [String: Any] ?? [:]
-        var server: [String: Any] = [
-            "command": preview.commandPath,
-            "args": preview.arguments
-        ]
+        var mcpServers: [String: Any] = [:]
+        if let existing = root["mcpServers"] {
+            guard let servers = existing as? [String: Any] else {
+                throw MCPClientRegistrationError.invalidConfigShape(path: preview.destinationURL.path)
+            }
+            mcpServers = servers
+        }
+        // Keep keys the user added to this entry (env, disabled, timeouts);
+        // registration owns only how the server is launched.
+        var server = mcpServers[Self.serverName] as? [String: Any] ?? [:]
+        server["command"] = preview.commandPath
+        server["args"] = preview.arguments
         if Self.jsonEntryRequiresType(preview.client) {
             server["type"] = "stdio"
         }
         mcpServers[Self.serverName] = server
         root["mcpServers"] = mcpServers
 
-        var data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+        var data = try JSONSerialization.data(
+            withJSONObject: root,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
         data.append(0x0A)
         return data
     }
@@ -1594,7 +1634,8 @@ nonisolated struct MCPClientRegistrar {
         in text: String,
         with replacement: String
     ) -> String {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let lines = tomlLines(text)
+        let lineBreak = text.contains("\r\n") ? "\r\n" : "\n"
         let targetHeader = normalizedTOMLTableHeader(sectionHeader) ?? sectionHeader
         var output: [String] = []
         var index = 0
@@ -1606,7 +1647,7 @@ nonisolated struct MCPClientRegistrar {
                     if !output.isEmpty, output.last?.isEmpty == false {
                         output.append("")
                     }
-                    output.append(contentsOf: replacement.split(separator: "\n").map(String.init))
+                    output.append(contentsOf: tomlLines(replacement).filter { !$0.isEmpty })
                     didReplace = true
                 }
                 index += 1
@@ -1627,17 +1668,27 @@ nonisolated struct MCPClientRegistrar {
             if !output.isEmpty, output.last?.isEmpty == false {
                 output.append("")
             }
-            output.append(contentsOf: replacement.split(separator: "\n").map(String.init))
+            output.append(contentsOf: tomlLines(replacement).filter { !$0.isEmpty })
         }
 
         while output.last?.isEmpty == true {
             output.removeLast()
         }
-        return output.joined(separator: "\n") + "\n"
+        return output.joined(separator: lineBreak) + lineBreak
+    }
+
+    /// TOML allows LF and CRLF line endings. Swift treats CRLF as a single
+    /// Character, so splitting on "\n" alone would leave a CRLF file as one
+    /// line, miss the existing table and append a duplicate one.
+    static func tomlLines(_ text: String) -> [String] {
+        text.split(
+            omittingEmptySubsequences: false,
+            whereSeparator: { $0 == "\n" || $0 == "\r\n" }
+        ).map(String.init)
     }
 
     static func tomlSection(named sectionHeader: String, in text: String) -> [String]? {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let lines = tomlLines(text)
         let targetHeader = normalizedTOMLTableHeader(sectionHeader) ?? sectionHeader
         guard let start = lines.firstIndex(where: { normalizedTOMLTableHeader($0) == targetHeader }) else {
             return nil

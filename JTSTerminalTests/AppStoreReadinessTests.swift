@@ -36,6 +36,30 @@ struct AppStoreReadinessTests {
         #expect(updated.contains("model = \"gpt-5.5\""))
     }
 
+    @Test func tomlRegistrationRecognizesCRLFFilesAndKeepsTheirLineEndings() {
+        let existing = "model = \"gpt-5.5\"\r\n\r\n[mcp_servers.jts-terminal]\r\ncommand = \"/tmp/old\"\r\nargs = [\"--old\"]\r\n\r\n[projects.\"/tmp/example\"]\r\ntrust_level = \"trusted\"\r\n"
+        let replacement = "[mcp_servers.jts-terminal]\ncommand = \"/Applications/JTS Terminal.app/Contents/MacOS/JTS Terminal\"\nargs = [\"--mcp\"]\n"
+
+        // The existing table is found, so registration is not appended twice.
+        #expect(MCPClientRegistrar.tomlSection(
+            named: "[mcp_servers.jts-terminal]",
+            in: existing
+        ) == ["command = \"/tmp/old\"", "args = [\"--old\"]", ""])
+
+        let updated = MCPClientRegistrar.replacingTOMLSection(
+            named: "[mcp_servers.jts-terminal]",
+            in: existing,
+            with: replacement
+        )
+        #expect(updated.components(separatedBy: "[mcp_servers.jts-terminal]").count - 1 == 1)
+        #expect(!updated.contains("/tmp/old"))
+        #expect(updated.contains("model = \"gpt-5.5\"\r\n"))
+        #expect(updated.contains("trust_level = \"trusted\"\r\n"))
+        #expect(updated.hasSuffix("\r\n"))
+        // Every line break in the result stays CRLF.
+        #expect(!updated.replacingOccurrences(of: "\r\n", with: "").contains("\n"))
+    }
+
     @Test func tomlHeaderNormalizationKeepsDistinctTablesDistinct() {
         #expect(MCPClientRegistrar.normalizedTOMLTableHeader("[mcp_servers.jts-terminal]") == "[mcp_servers.jts-terminal]")
         #expect(MCPClientRegistrar.normalizedTOMLTableHeader("  [ mcp_servers . 'jts-terminal' ]  # note") == "[mcp_servers.jts-terminal]")

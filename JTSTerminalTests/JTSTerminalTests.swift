@@ -3426,6 +3426,54 @@ struct JTSTerminalTests {
             .path))
     }
 
+    @Test func jsonRegistrationKeepsUserKeysAndRefusesUnexpectedShapes() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-terminal-json-merge-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let registrar = MCPClientRegistrar(homeDirectory: root)
+        let commandPath = try makeFakeJTSExecutable(
+            in: root.appendingPathComponent("Installed", isDirectory: true)
+        )
+        let cursorURL = registrar.cursorConfigURL
+        try FileManager.default.createDirectory(
+            at: cursorURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "mcpServers": {
+            "jts-terminal": {
+              "command": "/old/path",
+              "args": ["--mcp"],
+              "env": {"JTS_LOG": "1"},
+              "disabled": false
+            }
+          }
+        }
+        """.write(to: cursorURL, atomically: true, encoding: .utf8)
+
+        let result = try registrar.registerCursor(commandPath: commandPath)
+        let text = try String(contentsOf: cursorURL, encoding: .utf8)
+        let object = try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+        let entry = try #require((object["mcpServers"] as? [String: Any])?["jts-terminal"] as? [String: Any])
+        #expect(entry["command"] as? String == commandPath)
+        #expect(entry["args"] as? [String] == MCPClientRegistrar.arguments(registrationID: result.registrationID))
+        #expect(entry["type"] as? String == "stdio")
+        // Keys the user added to the entry survive an update.
+        #expect((entry["env"] as? [String: Any])?["JTS_LOG"] as? String == "1")
+        #expect(entry["disabled"] as? Bool == false)
+        // Paths are written as typed, without escaped slashes.
+        #expect(!text.contains("\\/"))
+
+        // A non-object mcpServers is reported, never replaced.
+        let wrongShape = Data(#"{"mcpServers": ["jts-terminal"]}"#.utf8)
+        try wrongShape.write(to: cursorURL)
+        #expect(throws: MCPClientRegistrationError.self) {
+            try registrar.registerCursor(commandPath: commandPath)
+        }
+        #expect(try Data(contentsOf: cursorURL) == wrongShape)
+    }
+
     @Test func claudeCodeAllowRuleIsAddedOnceAndKeepsExistingSettings() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("jts-terminal-claude-allow-\(UUID().uuidString)", isDirectory: true)
