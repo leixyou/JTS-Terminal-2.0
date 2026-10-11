@@ -82,6 +82,22 @@ nonisolated struct MCPClientRegistrationEvidenceStore {
         MCPClientRegistrationEvidenceStore(rootURL: nil)
     }
 
+    /// Moves every receipt aside together with a registry reset, so an
+    /// invalid receipt cannot keep blocking status checks. Returns where the
+    /// old receipts were kept.
+    @discardableResult
+    func moveAside(at date: Date = Date()) throws -> URL? {
+        guard let rootURL, fileManager.fileExists(atPath: rootURL.path) else { return nil }
+        let destination = rootURL.deletingLastPathComponent()
+            .appendingPathComponent(
+                rootURL.lastPathComponent
+                    + ".reset-\(Int(date.timeIntervalSince1970))-\(UUID().uuidString.prefix(8))",
+                isDirectory: true
+            )
+        try fileManager.moveItem(at: rootURL, to: destination)
+        return destination
+    }
+
     func recordCompletedInstall(
         registration: MCPClientRegistrationRecord,
         commandPath: String,

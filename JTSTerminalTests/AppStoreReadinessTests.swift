@@ -60,6 +60,45 @@ struct AppStoreReadinessTests {
         #expect(!updated.replacingOccurrences(of: "\r\n", with: "").contains("\n"))
     }
 
+    @Test func tomlRegistrationKeepsUserKeysAndRefusesAlternateDefinitions() {
+        let section = [
+            "command = \"/old\"",
+            "args = [",
+            "  \"--mcp\",",
+            "]",
+            "# keep this note",
+            "startup_timeout_sec = 30",
+            "enabled = false",
+            "",
+        ]
+        #expect(MCPClientRegistrar.tomlLinesKeepingUserKeys(section) == [
+            "# keep this note",
+            "startup_timeout_sec = 30",
+            "enabled = false",
+        ])
+
+        // The supported table form, including its own sub-tables, is fine.
+        #expect(!MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "[mcp_servers.jts-terminal]\ncommand = \"/x\"\n[mcp_servers.jts-terminal.env]\nA = \"1\"\n"
+        ))
+        #expect(!MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "[mcp_servers.other]\ncommand = \"/opt/jts-terminal\"\n"
+        ))
+        // Inline tables and dotted keys would be defined twice by appending.
+        #expect(MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "[mcp_servers]\njts-terminal = { command = \"/x\" }\n"
+        ))
+        #expect(MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "[mcp_servers]\n\"jts-terminal\".command = \"/x\"\n"
+        ))
+        #expect(MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "mcp_servers.jts-terminal.command = \"/x\"\n"
+        ))
+        #expect(MCPClientRegistrar.definesServerOutsideTOMLTable(
+            "mcp_servers = { jts-terminal = { command = \"/x\" } }\n"
+        ))
+    }
+
     @Test func tomlHeaderNormalizationKeepsDistinctTablesDistinct() {
         #expect(MCPClientRegistrar.normalizedTOMLTableHeader("[mcp_servers.jts-terminal]") == "[mcp_servers.jts-terminal]")
         #expect(MCPClientRegistrar.normalizedTOMLTableHeader("  [ mcp_servers . 'jts-terminal' ]  # note") == "[mcp_servers.jts-terminal]")

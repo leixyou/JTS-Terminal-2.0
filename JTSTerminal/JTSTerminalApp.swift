@@ -393,20 +393,36 @@ private struct JTSTerminalCommands: Commands {
 
             ForEach(MCPClientKind.registrationDisplayOrder, id: \.self) { client in
                 let status = mcpRegistrationStatus(for: client)
-                Button {
-                    MCPMenuActions.perform(
-                        client,
-                        status: status,
-                        language: language
-                    )
-                } label: {
-                    Label(
-                        mcpRegistrationMenuTitle(for: status),
-                        systemImage: mcpRegistrationMenuSymbol(for: status)
-                    )
+                if status.isRegistered {
+                    Menu {
+                        Button(language.localized("Reconfigure", "重新配置")) {
+                            MCPMenuActions.configure(client, language: language)
+                        }
+                        Button(language.localized("Remove Registration…", "移除注册…")) {
+                            MCPMenuActions.remove(client, language: language)
+                        }
+                    } label: {
+                        Label(
+                            mcpRegistrationMenuTitle(for: status),
+                            systemImage: mcpRegistrationMenuSymbol(for: status)
+                        )
+                    }
+                    .help(mcpRegistrationMenuHelp(for: status))
+                } else {
+                    Button {
+                        MCPMenuActions.perform(
+                            client,
+                            status: status,
+                            language: language
+                        )
+                    } label: {
+                        Label(
+                            mcpRegistrationMenuTitle(for: status),
+                            systemImage: mcpRegistrationMenuSymbol(for: status)
+                        )
+                    }
+                    .help(mcpRegistrationMenuHelp(for: status))
                 }
-                .disabled(status.isRegistered)
-                .help(mcpRegistrationMenuHelp(for: status))
             }
 
             Button(language.localized(
@@ -419,6 +435,17 @@ private struct JTSTerminalCommands: Commands {
             .help(language.localized(
                 "Lets Claude Code run every JTS Terminal tool without asking each time. JTS Terminal's own permissions still apply.",
                 "让 Claude Code 使用所有 JTS Terminal 工具时不再逐次询问。JTS Terminal 自身的权限仍然有效。"
+            ))
+
+            Button(language.localized(
+                "Reset MCP Client Registrations…",
+                "重置 MCP 客户端注册…"
+            )) {
+                MCPMenuActions.resetRegistrations(language: language)
+            }
+            .help(language.localized(
+                "Use when every AI client is refused with CLIENT_REGISTRATION_REQUIRED or the registration records are damaged.",
+                "当所有 AI 客户端都被拒绝（CLIENT_REGISTRATION_REQUIRED）或注册记录损坏时使用。"
             ))
 
             Divider()
@@ -598,10 +625,15 @@ private struct JTSTerminalCommands: Commands {
     ) -> String {
         let client = status.client
         switch status.state {
+        case .registered where status.verification != nil && status.verification != .configuration:
+            return language.localized(
+                "JTS Terminal registered \(client.displayName) earlier but cannot read its configuration right now to confirm the entry is still there. If \(client.displayName) no longer shows JTS tools, choose Reconfigure.",
+                "JTS Terminal 之前已注册 \(client.displayName)，但目前无法读取其配置来确认条目仍在。如果 \(client.displayName) 里看不到 JTS 工具，请选择“重新配置”。"
+            )
         case .registered:
             return language.localized(
-                "\(client.displayName) already has the jts-terminal MCP server registered.",
-                "\(client.displayName) 已注册 jts-terminal MCP 服务器。"
+                "\(client.displayName) already has the jts-terminal MCP server registered. Choose Reconfigure to write it again, or Remove Registration to take it out.",
+                "\(client.displayName) 已注册 jts-terminal MCP 服务器。可选择“重新配置”重新写入，或“移除注册”将其删除。"
             )
         case .needsUpdate:
             return language.localized(
@@ -953,10 +985,105 @@ enum MCPMenuActions {
         status: MCPClientRegistrationStatus,
         language: AppLanguage
     ) {
-        guard !status.isRegistered else {
-            return
-        }
         configure(client, language: language)
+    }
+
+    /// Removes the jts-terminal entry from the client's configuration and
+    /// revokes its registration ID after the user confirms.
+    static func remove(_ client: MCPClientKind, language: AppLanguage) {
+        let registrar = MCPClientRegistrar()
+        let configurationURL = registrar.defaultConfigURL(for: client).standardizedFileURL
+        let sharedNote = client.configurationEndpoint == .codex
+            ? language.localized(
+                " Codex Desktop and Codex CLI share this file, so both lose JTS tools.",
+                " Codex Desktop 与 Codex CLI 共用这个文件，两者都会失去 JTS 工具。"
+            )
+            : ""
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = language.localized(
+            "Remove JTS Terminal from \(client.displayName)?",
+            "要从 \(client.displayName) 移除 JTS Terminal 吗？"
+        )
+        alert.informativeText = language.localized(
+            "JTS Terminal removes the jts-terminal entry from \(configurationURL.path) and stops accepting this client's registration.\(sharedNote) A copy of the current file is kept as \(MCPClientRegistrar.backupURL(for: configurationURL).lastPathComponent).",
+            "JTS Terminal 会从 \(configurationURL.path) 删除 jts-terminal 条目，并不再接受该客户端的注册。\(sharedNote)当前文件会另存一份 \(MCPClientRegistrar.backupURL(for: configurationURL).lastPathComponent)。"
+        )
+        alert.addButton(withTitle: language.localized("Remove", "移除"))
+        alert.addButton(withTitle: language.localized("Cancel", "取消"))
+        alert.buttons.first?.setAccessibilityIdentifier("mcp-registration-remove-button")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        let scoped = registrar.configurationAccessStore.withAccess(for: client) { url in
+            Result { try registrar.unregister(client, destinationURL: url) }
+        }
+        let outcome: Result<Bool, Error>
+        if case .value(let result) = scoped {
+            outcome = result
+        } else {
+            outcome = Result { try registrar.unregister(client, destinationURL: configurationURL) }
+        }
+        MCPClientRegistrationStatusRefresh.bump()
+        switch outcome {
+        case .success:
+            showAlert(
+                title: language.localized("Registration Removed", "已移除注册"),
+                message: language.localized(
+                    "Restart \(client.displayName) or start a new session so it stops loading JTS Terminal.",
+                    "请重启 \(client.displayName) 或开启新会话，使其不再加载 JTS Terminal。"
+                ),
+                language: language,
+                style: .informational
+            )
+        case .failure(let error):
+            showAlert(
+                title: language.localized("Registration Not Removed", "未能移除注册"),
+                message: error.localizedDescription,
+                language: language,
+                style: .warning
+            )
+        }
+    }
+
+    /// Recovery for a damaged registry: moves it aside so each client can be
+    /// configured again. Client configuration files are not changed.
+    static func resetRegistrations(language: AppLanguage) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = language.localized(
+            "Reset MCP client registrations?",
+            "要重置 MCP 客户端注册吗？"
+        )
+        alert.informativeText = language.localized(
+            "Every AI client loses access to JTS Terminal until you configure it again from the MCP menu. Client configuration files are not changed, and the old records are kept aside.",
+            "所有 AI 客户端都会失去对 JTS Terminal 的访问，直到你从 MCP 菜单重新配置。客户端配置文件不会被修改，旧记录会另行保留。"
+        )
+        alert.addButton(withTitle: language.localized("Reset", "重置"))
+        alert.addButton(withTitle: language.localized("Cancel", "取消"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            let registrar = MCPClientRegistrar()
+            try registrar.registrationRegistry.moveAside()
+            try registrar.registrationEvidenceStore.moveAside()
+            MCPClientRegistrationStatusRefresh.bump()
+            showAlert(
+                title: language.localized("Registrations Reset", "注册已重置"),
+                message: language.localized(
+                    "Configure each AI client again from the MCP menu, then restart it.",
+                    "请从 MCP 菜单重新配置每个 AI 客户端，然后重启它们。"
+                ),
+                language: language,
+                style: .informational
+            )
+        } catch {
+            showAlert(
+                title: language.localized("Reset Failed", "重置失败"),
+                message: error.localizedDescription,
+                language: language,
+                style: .warning
+            )
+        }
     }
 
     static func configure(
@@ -981,6 +1108,16 @@ enum MCPMenuActions {
             )
         }
 
+        // The user confirms the exact change once; a later attempt after a
+        // folder authorization asks again only if the change differs.
+        var confirmedDiff: String?
+        let confirm: (MCPClientRegistrationPreview) -> Bool = { preview in
+            if preview.focusedDiff == confirmedDiff { return true }
+            guard confirmRegistration(preview, language: language) else { return false }
+            confirmedDiff = preview.focusedDiff
+            return true
+        }
+
         let scopedAccess = registrar.configurationAccessStore.withAccess(
             for: client
         ) { destination in
@@ -993,7 +1130,8 @@ enum MCPMenuActions {
                     for: client,
                     commandPath: commandPath,
                     destination: configurationURL,
-                    registrar: registrar
+                    registrar: registrar,
+                    confirm: confirm
                 )
             }
         }
@@ -1007,6 +1145,9 @@ enum MCPMenuActions {
                 )
                 return
             case .failure(let error):
+                if error is CancellationError {
+                    return
+                }
                 if isUnexpectedConfigurationAuthorization(error) {
                     try? registrar.configurationAccessStore.removeAccess(
                         for: client
@@ -1026,9 +1167,12 @@ enum MCPMenuActions {
                 for: client,
                 commandPath: commandPath,
                 destination: configurationURL,
-                registrar: registrar
+                registrar: registrar,
+                confirm: confirm
             )
             finishRegistration(registration, registrar: registrar, language: language)
+            return
+        } catch is CancellationError {
             return
         } catch {
             guard MCPClientConfigurationAuthorizationErrorClassifier
@@ -1071,7 +1215,8 @@ enum MCPMenuActions {
                 for: client,
                 commandPath: commandPath,
                 destination: configurationURL,
-                registrar: registrar
+                registrar: registrar,
+                confirm: confirm
             )
             let preparedAccess = try registrar
                 .configurationAccessStore
@@ -1082,6 +1227,8 @@ enum MCPMenuActions {
                 )
             try registrar.configurationAccessStore.persist(preparedAccess)
             finishRegistration(registration, registrar: registrar, language: language)
+        } catch is CancellationError {
+            return
         } catch {
             showRegistrationFailure(error, language: language)
         }
@@ -1121,14 +1268,67 @@ enum MCPMenuActions {
         for client: MCPClientKind,
         commandPath: String,
         destination: URL,
-        registrar: MCPClientRegistrar
+        registrar: MCPClientRegistrar,
+        confirm: (MCPClientRegistrationPreview) -> Bool
     ) throws -> MCPClientRegistrationResult {
         let preview = try registrar.registrationPreview(
             for: client,
             commandPath: commandPath,
             destinationURL: destination
         )
+        guard confirm(preview) else { throw CancellationError() }
         return try registrar.register(preview)
+    }
+
+    /// Shows the exact entry change before anything is written.
+    private static func confirmRegistration(
+        _ preview: MCPClientRegistrationPreview,
+        language: AppLanguage
+    ) -> Bool {
+        let backupName = MCPClientRegistrar.backupURL(for: preview.destinationURL).lastPathComponent
+        let rewritesJSON = preview.client.configurationEndpoint != .codex
+            && preview.client != .grokCLI
+        var details = language.localized(
+            "JTS Terminal will add or update only the jts-terminal entry in \(preview.destinationURL.path). Other servers and settings stay as they are.",
+            "JTS Terminal 只会在 \(preview.destinationURL.path) 中添加或更新 jts-terminal 条目，其他服务器和设置保持不变。"
+        )
+        if preview.configurationSnapshot.exists {
+            details += language.localized(
+                " A copy of the current file is kept as \(backupName).",
+                " 当前文件会另存一份 \(backupName)。"
+            )
+            if rewritesJSON {
+                details += language.localized(
+                    " The file is saved with sorted keys and standard indentation; values are unchanged.",
+                    " 文件会按键名排序并使用标准缩进保存，内容值不变。"
+                )
+            }
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = language.localized(
+            "Configure \(preview.client.displayName)?",
+            "要配置 \(preview.client.displayName) 吗？"
+        )
+        alert.informativeText = details
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 520, height: 220))
+        textView.string = preview.focusedDiff
+        textView.isEditable = false
+        textView.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        textView.setAccessibilityIdentifier("mcp-registration-diff")
+        let scrollView = NSScrollView(frame: textView.frame)
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.borderType = .bezelBorder
+        scrollView.documentView = textView
+        alert.accessoryView = scrollView
+
+        alert.addButton(withTitle: language.localized("Configure", "配置"))
+        alert.addButton(withTitle: language.localized("Cancel", "取消"))
+        alert.buttons.first?.setAccessibilityIdentifier("mcp-registration-confirm-button")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private static func finishRegistration(

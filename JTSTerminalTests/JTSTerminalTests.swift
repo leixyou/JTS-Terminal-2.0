@@ -3474,6 +3474,94 @@ struct JTSTerminalTests {
         #expect(try Data(contentsOf: cursorURL) == wrongShape)
     }
 
+    @Test func codexRegistrationKeepsUserKeysBacksUpAndCanBeRemoved() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-terminal-codex-remove-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let registrar = MCPClientRegistrar(homeDirectory: root)
+        let commandPath = try makeFakeJTSExecutable(
+            in: root.appendingPathComponent("Installed", isDirectory: true)
+        )
+        let codexURL = registrar.codexConfigURL
+        try FileManager.default.createDirectory(
+            at: codexURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let original = """
+        model = "gpt-5.5"
+
+        [mcp_servers.jts-terminal]
+        command = "/old/JTS Terminal"
+        args = ["--mcp"]
+        startup_timeout_sec = 30
+
+        [projects."/tmp/example"]
+        trust_level = "trusted"
+
+        """
+        try original.write(to: codexURL, atomically: true, encoding: .utf8)
+
+        let result = try registrar.register(.codexDesktop, commandPath: commandPath)
+        let registered = try String(contentsOf: codexURL, encoding: .utf8)
+        #expect(!registered.contains("/old/JTS Terminal"))
+        #expect(registered.contains("startup_timeout_sec = 30"))
+        #expect(registered.contains("trust_level = \"trusted\""))
+        #expect(registered.components(separatedBy: "[mcp_servers.jts-terminal]").count - 1 == 1)
+        #expect(registrar.registrationStatus(for: .codexDesktop, commandPath: commandPath).state == .registered)
+
+        // The previous file is kept privately next to the config.
+        let backupURL = MCPClientRegistrar.backupURL(for: codexURL)
+        #expect(try String(contentsOf: backupURL, encoding: .utf8) == original)
+
+        // Removing takes out the entry, revokes the ID and keeps other content.
+        #expect(try registrar.unregister(.codexCLI))
+        let removed = try String(contentsOf: codexURL, encoding: .utf8)
+        #expect(!removed.contains("[mcp_servers.jts-terminal]"))
+        #expect(removed.contains("model = \"gpt-5.5\""))
+        #expect(removed.contains("trust_level = \"trusted\""))
+        #expect(try String(contentsOf: backupURL, encoding: .utf8) == registered)
+        #expect(try registrar.registrationRegistry.resolve(registrationID: result.registrationID) == nil)
+        #expect(registrar.registrationStatus(for: .codexDesktop, commandPath: commandPath).state == .notRegistered)
+        #expect(try !registrar.unregister(.codexDesktop))
+
+        // An inline definition is reported instead of being defined twice.
+        let inline = "[mcp_servers]\njts-terminal = { command = \"/x\", args = [] }\n"
+        try inline.write(to: codexURL, atomically: true, encoding: .utf8)
+        #expect(throws: MCPClientRegistrationError.self) {
+            try registrar.register(.codexDesktop, commandPath: commandPath)
+        }
+        #expect(try String(contentsOf: codexURL, encoding: .utf8) == inline)
+    }
+
+    @Test func registrationResetMovesRecordsAsideAndRevokesEveryID() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jts-terminal-registry-reset-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let registrar = MCPClientRegistrar(homeDirectory: root)
+        let commandPath = try makeFakeJTSExecutable(
+            in: root.appendingPathComponent("Installed", isDirectory: true)
+        )
+        let result = try registrar.registerCursor(commandPath: commandPath)
+        #expect(try registrar.registrationRegistry.resolve(registrationID: result.registrationID) != nil)
+
+        // A damaged registry blocks everything until it is moved aside.
+        try Data("not json".utf8).write(to: registrar.registrationRegistryURL)
+        #expect(throws: MCPClientRegistrationRegistryError.self) {
+            try registrar.registrationRegistry.resolve(registrationID: result.registrationID)
+        }
+
+        let aside = try #require(try registrar.registrationRegistry.moveAside())
+        #expect(FileManager.default.fileExists(atPath: aside.path))
+        try registrar.registrationEvidenceStore.moveAside()
+        #expect(try registrar.registrationRegistry.resolve(registrationID: result.registrationID) == nil)
+        #expect(registrar.registrationStatus(for: .cursor, commandPath: commandPath).state == .needsUpdate)
+
+        // Configuring again issues a fresh, working registration.
+        let again = try registrar.registerCursor(commandPath: commandPath)
+        #expect(again.registrationID != result.registrationID)
+        #expect(registrar.registrationStatus(for: .cursor, commandPath: commandPath).state == .registered)
+    }
+
     @Test func claudeCodeAllowRuleIsAddedOnceAndKeepsExistingSettings() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("jts-terminal-claude-allow-\(UUID().uuidString)", isDirectory: true)

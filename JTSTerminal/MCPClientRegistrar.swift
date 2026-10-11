@@ -276,6 +276,38 @@ nonisolated struct MCPClientRegistrationRegistry {
         return preview
     }
 
+    /// Removes the record for one configuration file, revoking its ID.
+    @discardableResult
+    func remove(configurationURL: URL) throws -> MCPClientRegistrationRecord? {
+        var records = try load()
+        let key = Self.configurationKey(for: configurationURL)
+        guard let index = records.firstIndex(where: { $0.configurationKey == key }) else {
+            return nil
+        }
+        let removed = records.remove(at: index)
+        try persist(records)
+        return removed
+    }
+
+    /// Moves the registry aside, damaged or not, so registration can start
+    /// over. Every previously issued ID stops working; each client must be
+    /// configured again. Returns where the old file was kept.
+    @discardableResult
+    func moveAside(at date: Date = Date()) throws -> URL? {
+        guard fileManager.fileExists(atPath: storageURL.path) else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let destination = storageURL.deletingLastPathComponent()
+            .appendingPathComponent(
+                storageURL.deletingPathExtension().lastPathComponent
+                    + ".reset-\(formatter.string(from: date))-\(UUID().uuidString.prefix(8))."
+                    + storageURL.pathExtension
+            )
+        try fileManager.moveItem(at: storageURL, to: destination)
+        return destination
+    }
+
     func resolve(registrationID: String) throws -> MCPClientRegistrationRecord? {
         let normalized = registrationID.lowercased()
         guard Self.isValidRegistrationID(normalized) else { return nil }
@@ -436,9 +468,15 @@ nonisolated enum MCPClientRegistrationError: LocalizedError {
         expectedDirectory: String,
         selectedDirectory: String
     )
+    case unsupportedTOMLEntry(path: String)
 
     var errorDescription: String? {
         switch self {
+        case .unsupportedTOMLEntry(let path):
+            return AppLanguage.localizedForStoredLanguage(
+                "\(path) already defines jts-terminal as an inline table or with dotted keys, so JTS Terminal left it unchanged. Change it to a [mcp_servers.jts-terminal] table or delete it, then choose Configure again.",
+                "\(path) 已经用行内表或点号键的写法定义了 jts-terminal，JTS Terminal 未修改该文件。请把它改成 [mcp_servers.jts-terminal] 表或删除它，然后再选择“配置”。"
+            )
         case .invalidJSON(let path):
             return AppLanguage.localizedForStoredLanguage(
                 "MCP config is not valid JSON, so JTS Terminal left it unchanged: \(path). Remove comments or trailing commas, then choose Configure again.",
@@ -643,6 +681,9 @@ nonisolated struct MCPClientRegistrar {
         _ = try registrationRegistry.activate(preview.registration)
         try afterRegistrationActivationForTesting?()
         try requireCurrentConfigurationSnapshot(for: preview)
+        if let previousData = verifiedState.data {
+            try backUpConfiguration(previousData, for: preview.destinationURL)
+        }
         try write(
             updatedData,
             to: preview.destinationURL,
@@ -662,6 +703,69 @@ nonisolated struct MCPClientRegistrar {
             configPath: preview.destinationURL.path,
             registrationID: preview.registration.registrationID
         )
+    }
+
+    /// One private copy of the previous file, replaced on each change, so a
+    /// user can restore what JTS Terminal changed.
+    static func backupURL(for configurationURL: URL) -> URL {
+        configurationURL.deletingLastPathComponent()
+            .appendingPathComponent(configurationURL.lastPathComponent + ".jts-terminal-backup")
+    }
+
+    private func backUpConfiguration(_ data: Data, for configurationURL: URL) throws {
+        let backupURL = Self.backupURL(for: configurationURL)
+        let state = try configurationFileState(at: backupURL)
+        guard state.data != data else { return }
+        try write(data, to: backupURL, expectedSnapshot: state.snapshot, runsTestSeams: false)
+    }
+
+    /// Removes the jts-terminal entry from the client's configuration and
+    /// revokes its registration ID, so a client still holding the old ID is
+    /// refused. Codex Desktop and Codex CLI share one file and one ID.
+    /// Returns whether an entry was removed from the file.
+    @discardableResult
+    func unregister(_ client: MCPClientKind, destinationURL: URL? = nil) throws -> Bool {
+        let url = (destinationURL ?? defaultConfigURL(for: client)).standardizedFileURL
+        let state = try configurationFileState(at: url)
+        var didRemoveEntry = false
+        if let data = state.data,
+           let updated = try configurationDataRemovingEntry(for: client, data: data, path: url.path) {
+            try backUpConfiguration(data, for: url)
+            try write(updated, to: url, expectedSnapshot: state.snapshot)
+            didRemoveEntry = true
+        }
+        _ = try registrationRegistry.remove(configurationURL: url)
+        return didRemoveEntry
+    }
+
+    private func configurationDataRemovingEntry(
+        for client: MCPClientKind,
+        data: Data,
+        path: String
+    ) throws -> Data? {
+        switch client {
+        case .codexDesktop, .codexCLI, .grokCLI:
+            guard let text = String(data: data, encoding: .utf8) else {
+                throw CocoaError(.fileReadInapplicableStringEncoding)
+            }
+            let header = "[mcp_servers.\(Self.serverName)]"
+            guard Self.tomlSection(named: header, in: text) != nil else { return nil }
+            return Data(Self.replacingTOMLSection(named: header, in: text, with: "").utf8)
+        case .antigravity, .claudeDesktop, .claudeCLI, .cursor:
+            var root = try readJSONObject(data: data, path: path)
+            guard var servers = root["mcpServers"] as? [String: Any],
+                  servers[Self.serverName] != nil else {
+                return nil
+            }
+            servers.removeValue(forKey: Self.serverName)
+            root["mcpServers"] = servers
+            var updated = try JSONSerialization.data(
+                withJSONObject: root,
+                options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            )
+            updated.append(0x0A)
+            return updated
+        }
     }
 
     func activateRegistration(_ preview: MCPClientRegistrationPreview) throws {
@@ -1073,7 +1177,7 @@ nonisolated struct MCPClientRegistrar {
             } else {
                 existingText = ""
             }
-            return Data(registeredTOMLText(for: preview, existingText: existingText).utf8)
+            return Data(try registeredTOMLText(for: preview, existingText: existingText).utf8)
         case .antigravity, .claudeDesktop, .claudeCLI, .cursor:
             return try registeredJSONData(for: preview, existingData: existingData)
         }
@@ -1082,17 +1186,96 @@ nonisolated struct MCPClientRegistrar {
     private func registeredTOMLText(
         for preview: MCPClientRegistrationPreview,
         existingText: String
-    ) -> String {
-        let replacement = """
-        [mcp_servers.\(Self.serverName)]
-        command = \(Self.tomlStringLiteral(preview.commandPath))
-        args = [\(preview.arguments.map(Self.tomlStringLiteral).joined(separator: ", "))]
-        """
+    ) throws -> String {
+        let header = "[mcp_servers.\(Self.serverName)]"
+        guard !Self.definesServerOutsideTOMLTable(existingText) else {
+            throw MCPClientRegistrationError.unsupportedTOMLEntry(path: preview.destinationURL.path)
+        }
+        // Keep keys the user added to this table (env, enabled, timeouts);
+        // registration owns only command and args.
+        let preserved = Self.tomlSection(named: header, in: existingText)
+            .map(Self.tomlLinesKeepingUserKeys) ?? []
+        let replacement = ([
+            header,
+            "command = \(Self.tomlStringLiteral(preview.commandPath))",
+            "args = [\(preview.arguments.map(Self.tomlStringLiteral).joined(separator: ", "))]",
+        ] + preserved).joined(separator: "\n")
         return Self.replacingTOMLSection(
-            named: "[mcp_servers.\(Self.serverName)]",
+            named: header,
             in: existingText,
             with: replacement
         )
+    }
+
+    /// The jts-terminal table's lines without `command` and `args` (including
+    /// a multi-line args array), comments and blank lines kept in place.
+    static func tomlLinesKeepingUserKeys(_ section: [String]) -> [String] {
+        var kept: [String] = []
+        var isSkippingArray = false
+        for line in section {
+            if isSkippingArray {
+                if line.contains("]") { isSkippingArray = false }
+                continue
+            }
+            let key = tomlKey(of: line)
+            if key == "command" || key == "args" {
+                let value = line.split(separator: "=", maxSplits: 1).dropFirst().first ?? ""
+                if key == "args", value.contains("["), !value.contains("]") {
+                    isSkippingArray = true
+                }
+                continue
+            }
+            kept.append(line)
+        }
+        while kept.last?.trimmingCharacters(in: .whitespaces).isEmpty == true {
+            kept.removeLast()
+        }
+        return kept
+    }
+
+    /// Whether the file defines jts-terminal in a form this registrar cannot
+    /// merge: an inline table under `[mcp_servers]`, dotted keys, or a root
+    /// `mcp_servers = { ... }`. Appending a table would define the server
+    /// twice, which TOML readers reject.
+    static func definesServerOutsideTOMLTable(_ text: String) -> Bool {
+        let ownTable = "mcp_servers.\(serverName)"
+        var currentTable = ""
+        for line in tomlLines(text) {
+            if let header = normalizedTOMLTableHeader(line) {
+                currentTable = header
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+                continue
+            }
+            guard let key = tomlKey(of: line) else { continue }
+            if currentTable == ownTable || currentTable.hasPrefix(ownTable + ".") {
+                continue
+            }
+            let fullKey = currentTable.isEmpty ? key : "\(currentTable).\(key)"
+            if fullKey == ownTable || fullKey.hasPrefix(ownTable + ".") {
+                return true
+            }
+            if fullKey == "mcp_servers", line.contains(serverName) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// The dotted key of a `key = value` line with quotes and spaces removed,
+    /// or nil for comments, blank lines and array continuations.
+    static func tomlKey(of line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("#"),
+              let equals = trimmed.firstIndex(of: "=") else {
+            return nil
+        }
+        let key = trimmed[..<equals]
+            .filter { $0 != "\"" && $0 != "'" && !$0.isWhitespace }
+        guard !key.isEmpty,
+              key.allSatisfy({ $0.isLetter || $0.isNumber || "_-.".contains($0) }) else {
+            return nil
+        }
+        return String(key)
     }
 
     func registerClaudeDesktop(commandPath: String) throws -> MCPClientRegistrationResult {
@@ -1424,7 +1607,8 @@ nonisolated struct MCPClientRegistrar {
     private func write(
         _ data: Data,
         to url: URL,
-        expectedSnapshot: MCPClientConfigurationSnapshot
+        expectedSnapshot: MCPClientConfigurationSnapshot,
+        runsTestSeams: Bool = true
     ) throws {
         let installedSnapshot = configurationSnapshot(data: data, exists: true)
         let stagedFile = try PrivateFileSecurity.createReplacementStagedFile(
@@ -1449,7 +1633,9 @@ nonisolated struct MCPClientRegistrar {
             try? stagedFile.handle.close()
             throw error
         }
-        try beforeConfigurationInstallForTesting?()
+        if runsTestSeams {
+            try beforeConfigurationInstallForTesting?()
+        }
         let currentState = try configurationFileState(at: url)
         guard currentState.snapshot == expectedSnapshot else {
             throw MCPClientRegistrationRegistryError.previewChanged
@@ -1508,7 +1694,9 @@ nonisolated struct MCPClientRegistrar {
         }
 
         do {
-            try afterConfigurationInstallForTesting?()
+            if runsTestSeams {
+                try afterConfigurationInstallForTesting?()
+            }
             try PrivateFileSecurity.verifyPrivateFile(at: url)
             guard try PrivateFileSecurity.identity(at: url) == stagedFile.identity else {
                 throw MCPClientRegistrationError.insecurePermissions(path: url.path)
