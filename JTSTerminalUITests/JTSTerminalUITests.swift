@@ -61,16 +61,7 @@ final class JTSTerminalUITests: XCTestCase {
             "JTS Terminal should default to English."
         )
 
-        let languagePicker = app.buttons["toolbar-language-picker"]
-        XCTAssertTrue(languagePicker.waitForExistence(timeout: 8), "The toolbar should expose the language switcher.")
-        languagePicker.click()
-
-        let chineseOption = app.buttons["toolbar-language-option-zh-Hans"].firstMatch
-        XCTAssertTrue(
-            chineseOption.waitForExistence(timeout: 3),
-            "The language popover should expose Simplified Chinese."
-        )
-        chineseOption.click()
+        selectChineseInSettings()
         XCTAssertTrue(
             app.buttons["新建服务器"].waitForExistence(timeout: 5),
             "Switching to Simplified Chinese should update the main server action."
@@ -592,12 +583,7 @@ final class JTSTerminalUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 8))
         app.activate()
 
-        let languagePicker = app.buttons["toolbar-language-picker"]
-        XCTAssertTrue(languagePicker.waitForExistence(timeout: 8))
-        languagePicker.click()
-        let chineseOption = app.buttons["toolbar-language-option-zh-Hans"].firstMatch
-        XCTAssertTrue(chineseOption.waitForExistence(timeout: 3))
-        chineseOption.click()
+        selectChineseInSettings()
 
         let accessButton = app.buttons["rdp-ai-access-button"].firstMatch
         XCTAssertTrue(accessButton.waitForExistence(timeout: 5))
@@ -791,7 +777,7 @@ final class JTSTerminalUITests: XCTestCase {
 
         let addServerButton = app.buttons["add-server-button"]
         XCTAssertTrue(addServerButton.waitForExistence(timeout: 8), "The sidebar New Server button should be visible.")
-        XCTAssertTrue(app.textFields["server-search-field"].waitForExistence(timeout: 8), "The sidebar search field should be visible before creating a server.")
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 8), "The sidebar search field should be visible before creating a server.")
         XCTAssertTrue(
             mainWindowContentExists(),
             "The main window should show a stable workspace or empty state before creating a server."
@@ -808,7 +794,7 @@ final class JTSTerminalUITests: XCTestCase {
             "Creating a server should keep the sidebar content available behind Server Properties."
         )
         XCTAssertTrue(
-            app.textFields["server-search-field"].exists,
+            app.searchFields.firstMatch.exists,
             "Creating a server should not make the sidebar search disappear."
         )
         XCTAssertTrue(
@@ -833,7 +819,7 @@ final class JTSTerminalUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 8))
         app.activate()
 
-        let serverRows = app.buttons.matching(identifier: "server-row")
+        let serverRows = app.descendants(matching: .any).matching(identifier: "server-row")
         let initialServerCount = serverRows.count
         let addServerButton = app.buttons["add-server-button"]
         XCTAssertTrue(addServerButton.waitForExistence(timeout: 8))
@@ -873,27 +859,29 @@ final class JTSTerminalUITests: XCTestCase {
     }
 
     @MainActor
-    func testToolbarNewServerOpensPropertiesSheet() throws {
+    func testNewServerCommandOpensPropertiesSheet() throws {
         launchTargetApplication()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 8))
         app.activate()
 
-        let toolbarNewServerButton = app.buttons["toolbar-new-server-button"]
-        XCTAssertTrue(toolbarNewServerButton.waitForExistence(timeout: 8), "The macOS toolbar should expose New Server.")
-        toolbarNewServerButton.click()
+        XCTAssertTrue(
+            app.buttons["add-server-button"].waitForExistence(timeout: 8),
+            "The main window should be ready before using File > New Server."
+        )
+        app.typeKey("n", modifierFlags: .command)
 
         XCTAssertTrue(
             waitForServerPropertiesWindow(timeout: 5),
-            "The toolbar New Server command should follow the same configure-first flow as the sidebar button."
+            "File > New Server should follow the same configure-first flow as the sidebar button."
         )
         XCTAssertTrue(
             serverPropertiesElement("session-host-field").waitForExistence(timeout: 5),
-            "Toolbar-created servers should open the host configuration field immediately."
+            "Servers created from the menu should open the host configuration field immediately."
         )
     }
 
     @MainActor
-    func testServerPropertiesShowsMCPClientRegistrationStatusOnly() throws {
+    func testMCPClientStatusLivesInSettingsNotServerProperties() throws {
         launchTargetApplication()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 8))
         app.activate()
@@ -906,61 +894,31 @@ final class JTSTerminalUITests: XCTestCase {
             waitForServerPropertiesWindow(timeout: 5),
             "New Server should open Server Properties."
         )
-
-        let mcpAccessSection = serverPropertiesElement("session-mcp-access-section")
-        let registrationSection = serverPropertiesElement("mcp-client-registration-section")
         XCTAssertTrue(
-            mcpAccessSection.waitForExistence(timeout: 5),
-            "Server Properties should group MCP profile access controls into one section."
-        )
-        XCTAssertTrue(
-            registrationSection.waitForExistence(timeout: 5),
-            "MCP client status should be part of the AI / MCP Access section."
-        )
-
-        let accessFrame = mcpAccessSection.frame
-        let registrationFrame = registrationSection.frame
-        XCTAssertGreaterThanOrEqual(
-            registrationFrame.minY,
-            accessFrame.minY,
-            "MCP client status should follow the profile access controls instead of interrupting connection fields."
-        )
-        XCTAssertLessThanOrEqual(
-            registrationFrame.maxY,
-            accessFrame.maxY,
-            "MCP client status should stay inside the AI / MCP Access section."
-        )
-
-        scrollToElement(serverPropertiesElement("mcp-registration-status-claude"))
-
-        XCTAssertTrue(
-            serverPropertiesElement("mcp-registration-status-claude").waitForExistence(timeout: 5),
-            "Server Properties should show Claude Desktop MCP registration status."
-        )
-        XCTAssertTrue(
-            serverPropertiesElement("mcp-registration-status-codex").waitForExistence(timeout: 5),
-            "Server Properties should show Codex Desktop MCP registration status."
-        )
-        XCTAssertTrue(
-            serverPropertiesElement("mcp-registration-status-antigravity").waitForExistence(timeout: 5),
-            "Server Properties should show Antigravity MCP registration status."
-        )
-        XCTAssertTrue(
-            serverPropertiesElement("mcp-registration-status-cursor").waitForExistence(timeout: 5),
-            "Server Properties should show Cursor MCP registration status."
+            serverPropertiesElement("session-mcp-enabled-toggle").waitForExistence(timeout: 5),
+            "Server Properties should keep the per-server AI access switch."
         )
         XCTAssertFalse(
-            serverPropertiesElement("mcp-register-claude-button").exists,
-            "Client registration should be managed from the top-level MCP menu, not Server Properties."
+            serverPropertiesWindow.descendants(matching: .any)["mcp-registration-status-claude"].exists,
+            "AI client status is app-wide and belongs in Settings > MCP, not in each server."
         )
-        XCTAssertFalse(
-            serverPropertiesElement("mcp-register-codex-button").exists,
-            "Client registration should be managed from the top-level MCP menu, not Server Properties."
-        )
-        XCTAssertFalse(
-            serverPropertiesElement("mcp-register-antigravity-button").exists,
-            "Client registration should be managed from the top-level MCP menu, not Server Properties."
-        )
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertFalse(waitForServerPropertiesWindow(timeout: 3))
+
+        app.typeKey(",", modifierFlags: .command)
+        let mcpTab = app.buttons["MCP"].firstMatch
+        XCTAssertTrue(mcpTab.waitForExistence(timeout: 5), "Settings should have an MCP tab.")
+        mcpTab.click()
+
+        for client in ["claude", "codex", "antigravity", "cursor"] {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["mcp-registration-status-\(client)"]
+                    .firstMatch
+                    .waitForExistence(timeout: 5),
+                "Settings > MCP should show the \(client) registration status."
+            )
+        }
+        app.typeKey("w", modifierFlags: .command)
     }
 
     @MainActor
@@ -1184,6 +1142,24 @@ final class JTSTerminalUITests: XCTestCase {
     }
 
     @MainActor
+    /// The language picker lives in Settings > General.
+    private func selectChineseInSettings(file: StaticString = #filePath, line: UInt = #line) {
+        app.typeKey(",", modifierFlags: .command)
+        let picker = app.popUpButtons["settings-language-picker"].firstMatch
+        XCTAssertTrue(
+            picker.waitForExistence(timeout: 5),
+            "Settings > General should expose the language picker.",
+            file: file,
+            line: line
+        )
+        picker.click()
+        let chineseOption = app.menuItems["简体中文"].firstMatch
+        XCTAssertTrue(chineseOption.waitForExistence(timeout: 3), file: file, line: line)
+        chineseOption.click()
+        app.typeKey("w", modifierFlags: .command)
+    }
+
+    @MainActor
     private func openMCPMenu() {
         let menu = app.menuBars.menuBarItems["MCP"].firstMatch
         XCTAssertTrue(
@@ -1289,14 +1265,8 @@ final class JTSTerminalUITests: XCTestCase {
     }
 
     private func openServerProperties(file: StaticString = #filePath, line: UInt = #line) {
-        let toolbarPropertiesButton = app.buttons["toolbar-server-properties-button"].firstMatch
-        let propertiesButton: XCUIElement
-        if toolbarPropertiesButton.waitForExistence(timeout: 8), toolbarPropertiesButton.isEnabled {
-            propertiesButton = toolbarPropertiesButton
-        } else {
-            propertiesButton = app.buttons["server-properties-button"].firstMatch
-        }
-        XCTAssertTrue(propertiesButton.waitForExistence(timeout: 8), "Server properties button should be available in the sidebar.", file: file, line: line)
+        let propertiesButton = app.buttons["toolbar-server-properties-button"].firstMatch
+        XCTAssertTrue(propertiesButton.waitForExistence(timeout: 8), "Server properties button should be available in the toolbar.", file: file, line: line)
         XCTAssertTrue(waitUntilEnabled(propertiesButton, timeout: 5), "Server properties button should be enabled.", file: file, line: line)
         propertiesButton.click()
     }

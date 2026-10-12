@@ -7773,11 +7773,6 @@ struct JTSTerminalTests {
         ))
     }
 
-    @Test func toolbarTooltipTimingIsFastEnoughForPointerHover() async throws {
-        #expect(ToolbarTooltipTiming.showDelayMilliseconds <= 200)
-        #expect(ToolbarTooltipTiming.showDelaySeconds < 0.25)
-    }
-
     @Test func welcomeGuideShowsOnceAndCoversMCPSetup() async throws {
         #expect(WelcomeGuidePolicy.shouldShow(hasSeenGuide: false, environment: [:]))
         #expect(!WelcomeGuidePolicy.shouldShow(hasSeenGuide: true, environment: [:]))

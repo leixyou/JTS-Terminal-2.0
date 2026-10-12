@@ -20,7 +20,7 @@ nonisolated struct LocalTransferAccessRequired: LocalizedError {
     let path: String
 
     var errorDescription: String? {
-        "LOCAL_FILE_ACCESS_REQUIRED: JTS Terminal cannot access \(path). Downloads, Pictures, Music and Movies are available by default. For another folder, choose MCP > Local Transfer Folders… (本地传输文件夹…), authorize its folder, then retry. Saved folder access is reused by MCP."
+        "LOCAL_FILE_ACCESS_REQUIRED: JTS Terminal cannot access \(path). Downloads, Pictures, Music and Movies are available by default. For another folder, add it in JTS Terminal > Settings > MCP > Local Transfer Folders (设置 > MCP > 本地传输文件夹), then retry. Saved folder access is reused by MCP."
     }
 
     static func explaining(_ error: Error, path: String) -> Error {

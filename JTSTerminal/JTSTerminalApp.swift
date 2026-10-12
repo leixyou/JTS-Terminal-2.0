@@ -62,13 +62,10 @@ struct JTSTerminalApp: App {
         .modelContainer(sharedModelContainer)
         .defaultSize(width: 920, height: 640)
         .windowResizability(.contentMinSize)
-        Settings {
-            TabView {
-                RelayStationsSettingsView()
-                    .tabItem { Label(AppLanguage.stored.localized("Relay Stations", "中转站"), systemImage: "network") }
-            }
-        }
         #endif
+        Settings {
+            AppSettingsView()
+        }
     }
 }
 
@@ -336,7 +333,6 @@ private struct JTSTerminalCommands: Commands {
     @FocusedValue(\.jtsTerminalCommandHandlers) private var handlers
     @Environment(\.openWindow) private var openWindow
     @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.defaultLanguage.rawValue
-    @AppStorage(TerminalMCPBridgeLaunchPolicy.userDefaultsKey) private var isTerminalMCPBridgeEnabled = false
     @AppStorage(MCPClientRegistrationStatusRefresh.storageKey) private var mcpRegistrationRefreshToken = ""
 
     private var language: AppLanguage {
@@ -385,12 +381,6 @@ private struct JTSTerminalCommands: Commands {
         }
 
         CommandMenu("MCP") {
-            Button(language.localized("Local Transfer Folders…", "本地传输文件夹…")) {
-                LocalTransferFoldersPanel.show(language: language)
-            }
-
-            Divider()
-
             ForEach(MCPClientKind.registrationDisplayOrder, id: \.self) { client in
                 let status = mcpRegistrationStatus(for: client)
                 if status.isRegistered {
@@ -425,36 +415,15 @@ private struct JTSTerminalCommands: Commands {
                 }
             }
 
-            Button(language.localized(
-                "Allow JTS Tools in Claude Code…",
-                "在 Claude Code 中允许 JTS 工具…"
-            )) {
-                MCPMenuActions.allowAllToolsInClaudeCode(language: language)
-            }
-            .disabled(!mcpRegistrationStatus(for: .claudeCLI).isRegistered)
-            .help(language.localized(
-                "Lets Claude Code run every JTS Terminal tool without asking each time. JTS Terminal's own permissions still apply.",
-                "让 Claude Code 使用所有 JTS Terminal 工具时不再逐次询问。JTS Terminal 自身的权限仍然有效。"
-            ))
-
-            Button(language.localized(
-                "Reset MCP Client Registrations…",
-                "重置 MCP 客户端注册…"
-            )) {
-                MCPMenuActions.resetRegistrations(language: language)
-            }
-            .help(language.localized(
-                "Use when every AI client is refused with CLIENT_REGISTRATION_REQUIRED or the registration records are damaged.",
-                "当所有 AI 客户端都被拒绝（CLIENT_REGISTRATION_REQUIRED）或注册记录损坏时使用。"
-            ))
-
             Divider()
 
-            Toggle(language.localized("Enable Terminal Bridge", "启用终端 Bridge"), isOn: $isTerminalMCPBridgeEnabled)
-                .help(language.localized(
-                    "Allows MCP clients to list and control already-open GUI terminal panes after the server profile or pane explicitly permits MCP Control.",
-                    "允许 MCP 客户端在服务器配置或窗格明确授权后，列出并控制已经打开的 GUI 终端窗格。"
-                ))
+            SettingsLink {
+                Text(language.localized("MCP Settings…", "MCP 设置…"))
+            }
+            .help(language.localized(
+                "Claude Code permission, Terminal Bridge, local transfer folders and registration recovery.",
+                "Claude Code 权限、终端 Bridge、本地传输文件夹和注册恢复。"
+            ))
 
             if MCPClientRegistrar.allowsUnregisteredDirectConfiguration {
                 Divider()
@@ -1385,6 +1354,12 @@ enum MCPMenuActions {
             registrar: registrar,
             language: language
         )
+    }
+
+    /// Whether Claude Code already runs JTS tools without asking; nil when
+    /// its settings cannot be read.
+    static func claudeCodeToolsAllowed() -> Bool? {
+        claudeCodeAllowsAllTools(registrar: MCPClientRegistrar())
     }
 
     /// Reads Claude Code's user settings within the Claude CLI folder grant.

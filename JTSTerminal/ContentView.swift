@@ -95,11 +95,18 @@ struct ContentView: View {
         AppLanguage.resolved(from: appLanguageRawValue)
     }
 
-    private var appLanguageBinding: Binding<AppLanguage> {
-        Binding(
-            get: { appLanguage },
-            set: { appLanguageRawValue = $0.rawValue }
-        )
+    private var windowTitle: String {
+        guard let selectedSession else { return MainWindowLifecycle.title }
+        let name = selectedSession.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? appLanguage.localized("Unnamed Server", "未命名服务器") : name
+    }
+
+    private var windowSubtitle: String {
+        guard let selectedSession else { return "" }
+        guard selectedSession.isConnectable else {
+            return appLanguage.localized("Needs setup", "待配置")
+        }
+        return "\(selectedSession.localizedAddress(language: appLanguage)) · \(selectedSession.connectionType.displayName(language: appLanguage))"
     }
 
     private var selectedSession: RemoteSession? {
@@ -129,7 +136,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            SessionSidebar(
+            ServerSidebar(
                 sessions: sessions,
                 selectedSessionID: $selectedSessionID,
                 searchText: $sidebarSearchText,
@@ -140,7 +147,7 @@ struct ContentView: View {
                 openProperties: { session in
                     showProperties(for: session, selectInMainWindow: false)
                 },
-                openTerminal: openTerminalFromSidebar
+                openSession: openTerminalFromSidebar
             )
         } detail: {
             Group {
@@ -166,20 +173,23 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 0, ideal: 1_040)
         }
-        .navigationTitle("JTS Terminal")
+        .navigationTitle(windowTitle)
+        .navigationSubtitle(windowSubtitle)
         .navigationSplitViewStyle(.balanced)
-        .tint(.accentColor)
         .environment(\.appLanguage, appLanguage)
         .environment(\.locale, Locale(identifier: appLanguage.localeIdentifier))
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                WorkspaceFeatureToolbarPicker(
-                    selection: $selectedWorkspaceFeature,
-                    connectionType: selectedSession?.connectionType,
-                    language: appLanguage
-                )
-                .accessibilityIdentifier("workspace-feature-toolbar-picker")
+            if let selectedSession {
+                ToolbarItem(placement: .principal) {
+                    WorkspaceFeaturePicker(
+                        selection: $selectedWorkspaceFeature,
+                        connectionType: selectedSession.connectionType,
+                        language: appLanguage
+                    )
+                }
+            }
 
+            ToolbarItemGroup(placement: .primaryAction) {
                 #if ENABLE_RDP_2
                 if let selectedSession,
                    RemoteGrantManagementEntryPolicy.isVisible(
@@ -200,35 +210,17 @@ struct ContentView: View {
                     }
                 }
                 #endif
-            }
 
-            ToolbarItem(placement: .primaryAction) {
-                AppLanguageToolbarPicker(
-                    selection: appLanguageBinding,
-                    language: appLanguage
-                )
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                ToolbarIconButton(
-                    title: appLanguage.localized("Server Properties", "服务器属性"),
-                    symbol: "info.circle",
-                    isEnabled: selectedSession != nil,
-                    accessibilityIdentifier: "toolbar-server-properties-button"
-                ) {
+                Button {
                     if let selectedSession {
                         showProperties(for: selectedSession)
                     }
+                } label: {
+                    Label(appLanguage.localized("Server Properties", "服务器属性"), systemImage: "info.circle")
                 }
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                ToolbarIconButton(
-                    title: appLanguage.localized("New Server", "新建服务器"),
-                    symbol: "plus",
-                    accessibilityIdentifier: "toolbar-new-server-button",
-                    action: addSession
-                )
+                .help(appLanguage.localized("Server Properties", "服务器属性"))
+                .disabled(selectedSession == nil)
+                .accessibilityIdentifier("toolbar-server-properties-button")
             }
         }
         .focusedSceneValue(\.jtsTerminalCommandHandlers, commandHandlers)
@@ -718,7 +710,7 @@ struct ContentView: View {
 
         let controller = NSHostingController(rootView: content)
         let window = ServerPropertiesWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 700),
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -736,7 +728,7 @@ struct ContentView: View {
             window?.performClose(nil)
         }
         controller.view.setAccessibilityIdentifier("server-properties-content")
-        window.minSize = NSSize(width: 680, height: 600)
+        window.minSize = NSSize(width: 540, height: 520)
         window.isReleasedWhenClosed = false
         window.delegate = delegate
         window.center()
@@ -1401,363 +1393,6 @@ private struct MainWindowGuard: NSViewRepresentable {
     }
 }
 
-private struct SessionSidebar: View {
-    @Environment(\.appLanguage) private var language
-    let sessions: [RemoteSession]
-    @Binding var selectedSessionID: PersistentIdentifier?
-    @Binding var searchText: String
-    let addSession: () -> Void
-    let addGroup: () -> Void
-    let deleteSessions: ([RemoteSession]) -> Void
-    let selectSession: (RemoteSession) -> Void
-    let openProperties: (RemoteSession) -> Void
-    let openTerminal: (RemoteSession) -> Void
-    @State private var sessionsPendingDeletion: [RemoteSession] = []
-    private var filteredSessions: [RemoteSession] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return sessions }
-
-        return sessions.filter { session in
-            [
-                session.name,
-                session.host,
-                session.username,
-                session.address,
-                session.folder,
-                session.connectionType.displayName,
-                session.rdpProfile.domain
-            ]
-            .contains { $0.lowercased().contains(query) }
-        }
-    }
-
-    private var groupedSessions: [(folder: String, sessions: [RemoteSession])] {
-        Dictionary(grouping: filteredSessions, by: \.folderDisplayName)
-            .map { (folder: $0.key, sessions: $0.value) }
-            .sorted { lhs, rhs in
-                if lhs.folder == "Ungrouped" { return false }
-                if rhs.folder == "Ungrouped" { return true }
-                return lhs.folder.localizedCaseInsensitiveCompare(rhs.folder) == .orderedAscending
-            }
-    }
-
-    var body: some View {
-        ZStack {
-            SidebarBackground()
-
-            List {
-                if groupedSessions.isEmpty {
-                    SidebarEmptySearchState(
-                        hasSearch: !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                        addSession: addSession
-                    )
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-                }
-
-                ForEach(groupedSessions, id: \.folder) { group in
-                    Section {
-                        ForEach(group.sessions) { session in
-                            ZStack(alignment: .trailing) {
-                                Button {
-                                    selectSession(session)
-                                } label: {
-                                    SessionRow(
-                                        session: session,
-                                        isSelected: selectedSessionID == session.persistentModelID
-                                    )
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("server-row")
-                                .simultaneousGesture(
-                                    TapGesture(count: 2).onEnded {
-                                        if session.isConnectable {
-                                            openTerminal(session)
-                                        } else {
-                                            openProperties(session)
-                                        }
-                                    }
-                                )
-
-                                Button {
-                                    openProperties(session)
-                                } label: {
-                                    Image(systemName: "info.circle")
-                                        .font(.callout.weight(.semibold))
-                                        .foregroundStyle(selectedSessionID == session.persistentModelID ? Color.white : Color.secondary)
-                                        .frame(width: 28, height: 28)
-                                        .background(
-                                            selectedSessionID == session.persistentModelID ? Color.white.opacity(0.18) : Color.primary.opacity(0.06),
-                                            in: Circle()
-                                        )
-                                        .contentShape(Circle())
-                                }
-                                .buttonStyle(.borderless)
-                                .help(language.localized("Server properties", "服务器属性"))
-                                .accessibilityIdentifier("server-properties-button")
-                                .padding(.trailing, 6)
-                            }
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-                            .contextMenu {
-                                Button {
-                                    openProperties(session)
-                                } label: {
-                                    Label(language.localized("Server Properties", "服务器属性"), systemImage: "info.circle")
-                                }
-
-                                Divider()
-
-                                Button(role: .destructive) {
-                                    sessionsPendingDeletion = [session]
-                                } label: {
-                                    Label(language.localized("Delete Server…", "删除服务器…"), systemImage: "trash")
-                                }
-                                .accessibilityIdentifier("server-row-delete-button")
-                            }
-                        }
-                        .onDelete { offsets in
-                            sessionsPendingDeletion = offsets.map { group.sessions[$0] }
-                        }
-                    } header: {
-                        HStack(spacing: 6) {
-                            Image(systemName: group.folder == "Ungrouped" ? "tray" : "folder")
-                            Text(group.folder == "Ungrouped" ? language.localized("Ungrouped", "未分组") : group.folder)
-                            Text("\(group.sessions.count)")
-                                .foregroundStyle(.tertiary)
-                        }
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .contextMenu {
-                Button {
-                    addGroup()
-                } label: {
-                    Label(language.localized("New Group", "新建分组"), systemImage: "folder.badge.plus")
-                }
-                .accessibilityIdentifier("sidebar-context-new-group-button")
-
-                Button {
-                    addSession()
-                } label: {
-                    Label(language.localized("New Server", "新建服务器"), systemImage: "plus")
-                }
-                .accessibilityIdentifier("sidebar-context-new-server-button")
-            }
-        }
-        .safeAreaInset(edge: .top) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    AppIconMark(size: 38)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("JTS Terminal")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                        Text(sidebarSubtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Button(action: addSession) {
-                    Label(language.localized("New Server", "新建服务器"), systemImage: "plus")
-                        .frame(maxWidth: .infinity)
-                }
-                .accessibilityIdentifier("add-server-button")
-                .buttonStyle(PrimarySoftButtonStyle())
-
-                TextField(language.localized("Search servers or folders", "搜索服务器或分组"), text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .accessibilityIdentifier("server-search-field")
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-        }
-        .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
-        .confirmationDialog(
-            deletionTitle,
-            isPresented: Binding(
-                get: { !sessionsPendingDeletion.isEmpty },
-                set: { if !$0 { sessionsPendingDeletion = [] } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(language.localized("Delete", "删除"), role: .destructive) {
-                let pending = sessionsPendingDeletion
-                sessionsPendingDeletion = []
-                deleteSessions(pending)
-            }
-            Button(language.localized("Cancel", "取消"), role: .cancel) {
-                sessionsPendingDeletion = []
-            }
-        } message: {
-            Text(language.localized(
-                "Open terminals, tunnels and desktops of this server are closed. Passwords saved in the local vault are kept for other profiles that use the same account.",
-                "该服务器打开的终端、隧道和桌面会被关闭。本地密码库中保存的密码会保留，供使用同一账号的其他配置继续使用。"
-            ))
-        }
-    }
-
-    private var deletionTitle: String {
-        if sessionsPendingDeletion.count == 1, let session = sessionsPendingDeletion.first {
-            let name = session.name.nilIfBlank ?? language.localized("Unnamed Server", "未命名服务器")
-            return language.localized("Delete “\(name)”?", "删除“\(name)”？")
-        }
-        return language.localized(
-            "Delete \(sessionsPendingDeletion.count) servers?",
-            "删除 \(sessionsPendingDeletion.count) 台服务器？"
-        )
-    }
-
-    private var sidebarSubtitle: String {
-        #if ENABLE_RDP_2
-        language.localized("SSH / SFTP / RDP workspace", "SSH / SFTP / RDP 工作区")
-        #else
-        language.localized("SSH / SFTP workspace", "SSH / SFTP 工作区")
-        #endif
-    }
-}
-
-private struct SidebarEmptySearchState: View {
-    @Environment(\.appLanguage) private var language
-    let hasSearch: Bool
-    let addSession: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(
-                hasSearch
-                    ? language.localized("No matching servers", "没有匹配的服务器")
-                    : language.localized("No servers yet", "还没有服务器"),
-                systemImage: hasSearch ? "magnifyingglass" : "server.rack"
-            )
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(.secondary)
-
-            Text(
-                hasSearch
-                    ? language.localized("Clear search or create a new server to continue.", "清空搜索或新建服务器后继续。")
-                    : emptyStateSetupMessage
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-            Button {
-                addSession()
-            } label: {
-                Label(language.localized("New Server", "新建服务器"), systemImage: "plus")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(.vertical, 6)
-        .accessibilityIdentifier("sidebar-empty-state")
-    }
-
-    private var emptyStateSetupMessage: String {
-        #if ENABLE_RDP_2
-        language.localized("Create an SSH, Local Shell, or Windows RDP profile to begin.", "创建 SSH、本地 Shell 或 Windows RDP 配置后开始使用。")
-        #else
-        language.localized("Create an SSH or Local Shell profile to begin.", "创建 SSH 或本地 Shell 配置后开始使用。")
-        #endif
-    }
-}
-
-private struct SessionRow: View {
-    @Environment(\.controlActiveState) private var controlActiveState
-    @Environment(\.appLanguage) private var language
-    let session: RemoteSession
-    let isSelected: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: session.isConnectable ? connectionSymbol : "exclamationmark.triangle.fill")
-                .foregroundStyle(iconForeground)
-                .frame(width: 30, height: 30)
-                .background(
-                    iconBackground,
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                )
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(session.name.nilIfBlank ?? language.localized("Unnamed Server", "未命名服务器"))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(primaryText)
-                    .lineLimit(1)
-                Text(session.localizedAddress(language: language))
-                    .font(.caption)
-                    .foregroundStyle(secondaryText)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .padding(.trailing, 36)
-        .background(
-            rowBackground,
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-        )
-    }
-
-    private var isActiveSelection: Bool {
-        isSelected && controlActiveState != .inactive
-    }
-
-    private var rowBackground: Color {
-        guard isSelected else { return .clear }
-        return isActiveSelection ? Color.accentColor : Color(nsColor: .quaternaryLabelColor).opacity(0.45)
-    }
-
-    private var primaryText: Color {
-        isActiveSelection ? .white : .primary
-    }
-
-    private var secondaryText: Color {
-        isActiveSelection ? .white.opacity(0.82) : .secondary
-    }
-
-    private var iconForeground: Color {
-        if isActiveSelection {
-            return .white
-        }
-
-        return session.isConnectable ? AppTheme.signal : Color.orange
-    }
-
-    private var iconBackground: Color {
-        if isActiveSelection {
-            return .white.opacity(0.18)
-        }
-
-        return session.isConnectable ? AppTheme.signal.opacity(0.11) : Color.orange.opacity(0.12)
-    }
-
-    private var connectionSymbol: String {
-        switch session.connectionType {
-        case .ssh:
-            return "server.rack"
-        case .localShell:
-            return "apple.terminal"
-        case .macDesktop:
-            return "desktopcomputer"
-        case .rdp:
-            return "desktopcomputer"
-        }
-    }
-}
-
 enum WorkspaceFeature: String, CaseIterable, Identifiable {
     case desktop
     case command
@@ -1906,58 +1541,34 @@ enum WorkspaceFeature: String, CaseIterable, Identifiable {
     }
 }
 
-private struct WorkspaceFeatureToolbarPicker: View {
+/// The window toolbar's workspace switcher: a standard segmented control,
+/// shown only when the selected connection offers more than one workspace.
+private struct WorkspaceFeaturePicker: View {
     @Binding var selection: WorkspaceFeature
-    let connectionType: RemoteConnectionType?
+    let connectionType: RemoteConnectionType
     let language: AppLanguage
 
-    private var availableFeatures: [WorkspaceFeature] {
-        guard let connectionType else { return [] }
-        return WorkspaceFeature.available(for: connectionType)
-    }
-
-    private var effectiveSelection: WorkspaceFeature? {
-        guard let connectionType else { return nil }
-        return WorkspaceFeature.resolvedSelection(selection, for: connectionType)
-    }
-
     var body: some View {
-        HStack(spacing: 1) {
-            ForEach(availableFeatures) { feature in
-                let isSelected = effectiveSelection == feature
-                Button {
-                    selection = feature
-                } label: {
-                    Image(systemName: feature.symbol)
-                        .font(.system(size: 13, weight: .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .frame(width: 28, height: 24)
-                        .contentShape(Rectangle())
+        let features = WorkspaceFeature.available(for: connectionType)
+        if features.count > 1 {
+            Picker(language.localized("Workspace", "工作区"), selection: resolvedSelection) {
+                ForEach(features) { feature in
+                    Text(feature.title(language: language))
+                        .tag(feature)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                .background(
-                    isSelected ? Color.accentColor.opacity(0.18) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                )
-                .background(
-                    FastTooltipAnchor(
-                        title: feature.toolbarHelp(language: language),
-                        isEnabled: connectionType != nil
-                    )
-                )
-                .accessibilityLabel(feature.toolbarHelp(language: language))
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
-                .accessibilityIdentifier("workspace-feature-toolbar-\(feature.rawValue)-button")
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityIdentifier("workspace-feature-toolbar-picker")
         }
-        .padding(3)
-        .background(.bar, in: Capsule(style: .continuous))
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(.separator.opacity(0.65), lineWidth: 1)
+    }
+
+    private var resolvedSelection: Binding<WorkspaceFeature> {
+        Binding(
+            get: { WorkspaceFeature.resolvedSelection(selection, for: connectionType) },
+            set: { selection = $0 }
         )
-        .opacity(connectionType == nil ? 0.45 : 1)
     }
 }
 
@@ -1967,401 +1578,6 @@ enum RemoteGrantManagementEntryPolicy {
         mcpEnabled _: Bool
     ) -> Bool {
         true
-    }
-}
-
-private struct AppLanguageToolbarPicker: View {
-    @Binding var selection: AppLanguage
-    let language: AppLanguage
-    @State private var isShowingLanguagePopover = false
-
-    var body: some View {
-        Button {
-            isShowingLanguagePopover.toggle()
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "globe")
-                    .font(.system(size: 13, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                Text(selection.shortDisplayName)
-                    .font(.caption2.weight(.bold))
-                    .monospacedDigit()
-            }
-            .frame(minWidth: 42, minHeight: 24)
-            .contentShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .fixedSize()
-        .popover(isPresented: $isShowingLanguagePopover, arrowEdge: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(AppLanguage.allCases) { option in
-                    Button {
-                        selection = option
-                        isShowingLanguagePopover = false
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark")
-                                .opacity(selection == option ? 1 : 0)
-                                .frame(width: 16)
-                            Text(option.displayName)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(option.displayName)
-                    .accessibilityIdentifier("toolbar-language-option-\(option.rawValue)")
-                }
-            }
-            .padding(6)
-            .frame(width: 150)
-        }
-        .accessibilityLabel(language.localized("Language", "语言"))
-        .accessibilityIdentifier("toolbar-language-picker")
-    }
-}
-
-enum ToolbarTooltipTiming {
-    static let showDelayMilliseconds = 180
-
-    static var showDelaySeconds: TimeInterval {
-        TimeInterval(showDelayMilliseconds) / 1_000
-    }
-}
-
-private struct FastTooltipAnchor: NSViewRepresentable {
-    let title: String
-    let isEnabled: Bool
-
-    func makeNSView(context: Context) -> FastTooltipTrackingView {
-        let view = FastTooltipTrackingView()
-        view.configure(title: title, isEnabled: isEnabled)
-        return view
-    }
-
-    func updateNSView(_ nsView: FastTooltipTrackingView, context: Context) {
-        nsView.configure(title: title, isEnabled: isEnabled)
-    }
-}
-
-private final class FastTooltipTrackingView: NSView {
-    private var trackingArea: NSTrackingArea?
-    private var title = ""
-    private var isTooltipEnabled = true
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea {
-            removeTrackingArea(trackingArea)
-        }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingArea = area
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-        scheduleTooltip()
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        super.mouseMoved(with: event)
-        scheduleTooltip()
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        FastTooltipPresenter.shared.hide()
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window == nil {
-            FastTooltipPresenter.shared.hide()
-        }
-    }
-
-    func configure(title: String, isEnabled: Bool) {
-        self.title = title
-        self.isTooltipEnabled = isEnabled
-    }
-
-    private func scheduleTooltip() {
-        guard isTooltipEnabled, !title.isBlank else { return }
-        FastTooltipPresenter.shared.schedule(title: title, for: self)
-    }
-}
-
-private final class FastTooltipPresenter {
-    static let shared = FastTooltipPresenter()
-
-    private var pendingTask: Task<Void, Never>?
-    private weak var pendingView: NSView?
-    private var pendingTitle = ""
-    private var panel: NSPanel?
-    private weak var activeView: NSView?
-    private var activeTitle = ""
-
-    private init() {}
-
-    func schedule(title: String, for view: NSView) {
-        if activeView === view, activeTitle == title, panel?.isVisible == true {
-            return
-        }
-        if pendingView === view, pendingTitle == title {
-            return
-        }
-
-        pendingTask?.cancel()
-        pendingView = view
-        pendingTitle = title
-        pendingTask = Task { @MainActor [weak self, weak view] in
-            try? await Task.sleep(for: .milliseconds(ToolbarTooltipTiming.showDelayMilliseconds))
-            guard !Task.isCancelled,
-                  let self,
-                  let view,
-                  view.window != nil else {
-                return
-            }
-            self.pendingView = nil
-            self.pendingTitle = ""
-            self.show(title: title, relativeTo: view)
-        }
-    }
-
-    func hide() {
-        pendingTask?.cancel()
-        pendingTask = nil
-        pendingView = nil
-        pendingTitle = ""
-        panel?.orderOut(nil)
-        activeView = nil
-        activeTitle = ""
-    }
-
-    private func show(title: String, relativeTo view: NSView) {
-        guard let window = view.window else { return }
-        let panel = panel ?? makePanel()
-        self.panel = panel
-
-        let label = panel.contentView?.viewWithTag(1) as? NSTextField
-        label?.stringValue = title
-        label?.invalidateIntrinsicContentSize()
-
-        let textSize = label?.intrinsicContentSize ?? NSSize(width: 40, height: 16)
-        let panelSize = NSSize(width: ceil(textSize.width + 18), height: max(28, ceil(textSize.height + 10)))
-        panel.setContentSize(panelSize)
-
-        let anchorFrame = window.convertToScreen(view.convert(view.bounds, to: nil))
-        let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? anchorFrame
-        var origin = NSPoint(
-            x: anchorFrame.midX - panelSize.width / 2,
-            y: anchorFrame.minY - panelSize.height - 7
-        )
-
-        if origin.y < visibleFrame.minY + 4 {
-            origin.y = anchorFrame.maxY + 7
-        }
-        origin.x = min(max(origin.x, visibleFrame.minX + 6), visibleFrame.maxX - panelSize.width - 6)
-
-        panel.setFrame(NSRect(origin: origin, size: panelSize), display: true)
-        panel.orderFront(nil)
-        activeView = view
-        activeTitle = title
-    }
-
-    private func makePanel() -> NSPanel {
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 80, height: 28),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.ignoresMouseEvents = true
-        panel.level = .floating
-        panel.collectionBehavior = [.transient, .ignoresCycle, .canJoinAllSpaces]
-
-        let container = NSView()
-        container.wantsLayer = true
-        container.layer?.cornerRadius = 5
-        container.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
-        container.layer?.borderWidth = 1
-        container.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.65).cgColor
-
-        let label = NSTextField(labelWithString: "")
-        label.tag = 1
-        label.font = .systemFont(ofSize: 12, weight: .semibold)
-        label.textColor = .labelColor
-        label.translatesAutoresizingMaskIntoConstraints = false
-
-        container.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 9),
-            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -9),
-            label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-        ])
-
-        panel.contentView = container
-        return panel
-    }
-}
-
-private struct ToolbarIconButton: NSViewRepresentable {
-    let title: String
-    let symbol: String
-    var isEnabled = true
-    let accessibilityIdentifier: String
-    let action: () -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(action: action)
-    }
-
-    func makeNSView(context: Context) -> TooltipToolbarButton {
-        let button = TooltipToolbarButton()
-        button.target = context.coordinator
-        button.action = #selector(Coordinator.performAction)
-        button.configure(
-            title: title,
-            symbol: symbol,
-            isEnabled: isEnabled,
-            accessibilityIdentifier: accessibilityIdentifier
-        )
-        return button
-    }
-
-    func updateNSView(_ nsView: TooltipToolbarButton, context: Context) {
-        context.coordinator.action = action
-        nsView.target = context.coordinator
-        nsView.action = #selector(Coordinator.performAction)
-        nsView.configure(
-            title: title,
-            symbol: symbol,
-            isEnabled: isEnabled,
-            accessibilityIdentifier: accessibilityIdentifier
-        )
-    }
-
-    final class Coordinator: NSObject {
-        var action: () -> Void
-
-        init(action: @escaping () -> Void) {
-            self.action = action
-        }
-
-        @objc func performAction() {
-            action()
-        }
-    }
-}
-
-private final class TooltipToolbarButton: NSButton {
-    private var trackingArea: NSTrackingArea?
-    private var tooltipTitle = ""
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        frame = NSRect(x: 0, y: 0, width: 32, height: 28)
-        isBordered = false
-        imagePosition = .imageOnly
-        focusRingType = .none
-        wantsLayer = true
-        updateAppearance(isHovering: false)
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        isBordered = false
-        imagePosition = .imageOnly
-        focusRingType = .none
-        wantsLayer = true
-        updateAppearance(isHovering: false)
-    }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: 32, height: 28)
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea {
-            removeTrackingArea(trackingArea)
-        }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingArea = area
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-        updateAppearance(isHovering: true)
-        if isEnabled, !tooltipTitle.isBlank {
-            FastTooltipPresenter.shared.schedule(title: tooltipTitle, for: self)
-        }
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        super.mouseMoved(with: event)
-        if isEnabled, !tooltipTitle.isBlank {
-            FastTooltipPresenter.shared.schedule(title: tooltipTitle, for: self)
-        }
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        updateAppearance(isHovering: false)
-        FastTooltipPresenter.shared.hide()
-    }
-
-    func configure(
-        title: String,
-        symbol: String,
-        isEnabled: Bool,
-        accessibilityIdentifier: String
-    ) {
-        self.tooltipTitle = title
-        self.title = ""
-        self.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        self.toolTip = nil
-        self.isEnabled = isEnabled
-        self.identifier = NSUserInterfaceItemIdentifier(accessibilityIdentifier)
-        setAccessibilityLabel(title)
-        setAccessibilityHelp(title)
-        setAccessibilityIdentifier(accessibilityIdentifier)
-        updateAppearance(isHovering: false)
-    }
-
-    override func accessibilityLabel() -> String? {
-        tooltipTitle.nilIfBlank ?? super.accessibilityLabel()
-    }
-
-    override func accessibilityHelp() -> String? {
-        tooltipTitle.nilIfBlank ?? super.accessibilityHelp()
-    }
-
-    private func updateAppearance(isHovering: Bool) {
-        layer?.cornerRadius = 14
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.65).cgColor
-        let alpha: CGFloat = isEnabled ? (isHovering ? 0.38 : 0.22) : 0.1
-        layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(alpha).cgColor
-        contentTintColor = isEnabled ? .labelColor : .tertiaryLabelColor
     }
 }
 
@@ -2413,20 +1629,9 @@ private struct RemoteWorkspace: View {
     let openServerProperties: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            WorkspaceToolbar(
-                session: session,
-                sessions: sessions,
-                selectedFeature: effectiveSelectedFeature
-            )
-
-            Divider()
-
-            selectedFeatureContainer
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .background(WorkspaceBackground())
-        .accessibilityElement(children: .contain)
+        selectedFeatureContainer
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityElement(children: .contain)
         .accessibilityIdentifier("remote-workspace-content")
         .onAppear(perform: reconcileSelectedFeature)
         .onChange(of: session.connectionType) { _, _ in
@@ -2592,108 +1797,25 @@ private struct RemoteWorkspace: View {
     }
 }
 
-private struct WorkspaceToolbar: View {
-    @Environment(\.appLanguage) private var language
-    let session: RemoteSession
-    let sessions: [RemoteSession]
-    let selectedFeature: WorkspaceFeature
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: session.isConnectable ? connectionSymbol : "exclamationmark.triangle.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(session.isConnectable ? AppTheme.signal : .orange)
-                .frame(width: 22, height: 22)
-                .background(
-                    session.isConnectable ? AppTheme.signal.opacity(0.12) : Color.orange.opacity(0.12),
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                )
-
-            Text(session.name.nilIfBlank ?? language.localized("New Server", "新建服务器"))
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .accessibilityIdentifier("workspace-toolbar-session-title")
-
-            Text(summary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Divider()
-                .frame(height: 16)
-
-            Label(selectedFeature.title(language: language), systemImage: selectedFeature.symbol)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .labelStyle(.titleAndIcon)
-                .lineLimit(1)
-
-            Spacer()
-
-            Label(
-                session.isConnectable ? language.localized("Profile Ready", "配置就绪") : language.localized("Needs Setup", "待配置"),
-                systemImage: session.isConnectable ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
-            )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(session.isConnectable ? AppTheme.signal : .orange)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(AppTheme.surface, in: Capsule(style: .continuous))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 5)
-        .background(AppTheme.panel)
-    }
-
-    private var summary: String {
-        let address = session.isConnectable
-            ? session.localizedAddress(language: language)
-            : language.localized("Add the required connection details to start", "填写所需连接信息后开始使用")
-        let hostCount = language.localized("\(sessions.count) servers", "\(sessions.count) 台服务器")
-        return "\(address) · \(hostCount)"
-    }
-
-    private var connectionSymbol: String {
-        switch session.connectionType {
-        case .ssh:
-            return "server.rack"
-        case .localShell:
-            return "apple.terminal"
-        case .macDesktop:
-            return "desktopcomputer"
-        case .rdp:
-            return "desktopcomputer"
-        }
-    }
-}
-
 struct ConfigureServerPrompt: View {
     @Environment(\.appLanguage) private var language
     let openServerProperties: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(language.localized("Configure Connection First", "先配置连接"))
-
+        ContentUnavailableView {
+            Label(language.localized("Finish Setting Up", "先完成配置"), systemImage: "slider.horizontal.3")
+        } description: {
             Text(language.localized(
-                "Fill in the required connection details before opening a terminal or desktop. Incomplete profiles never start a failed remote session automatically.",
-                "先填写所需连接信息，再打开终端或桌面。不完整的配置不会自动启动失败的远程会话。"
+                "Add the connection details before opening a terminal or desktop.",
+                "填写连接信息后才能打开终端或桌面。"
             ))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Button {
+        } actions: {
+            Button(language.localized("Open Server Properties", "打开服务器属性")) {
                 openServerProperties()
-            } label: {
-                Label(language.localized("Open Server Properties", "打开服务器属性"), systemImage: "slider.horizontal.3")
             }
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("configure-server-button")
         }
-        .padding(20)
-        .frame(maxWidth: 520, alignment: .leading)
-        .panelBackground()
     }
 }
 
@@ -2703,17 +1825,11 @@ private struct UnsupportedConnectionFeaturePrompt: View {
     let connectionType: RemoteConnectionType
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionTitle(promptTitle)
-
+        ContentUnavailableView {
+            Label(promptTitle, systemImage: feature.symbol)
+        } description: {
             Text(promptMessage)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(20)
-        .frame(maxWidth: 560, alignment: .leading)
-        .panelBackground()
     }
 
     private var promptTitle: String {
@@ -2760,105 +1876,6 @@ private struct UnsupportedConnectionFeaturePrompt: View {
             "\(feature.title(language: language)) is available for SSH profiles. \(connectionType.displayName(language: language)) profiles use their supported workspace and MCP capabilities.",
             "\(feature.title(language: language)) 仅适用于 SSH 配置。\(connectionType.displayName(language: language)) 配置使用其支持的工作区和 MCP 能力。"
         )
-    }
-}
-
-private struct FeaturePageHeader: View {
-    @Environment(\.appLanguage) private var language
-    let feature: WorkspaceFeature
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(feature.title(language: language))
-                .font(.system(.title, design: .rounded, weight: .bold))
-            Text(feature.subtitle(language: language))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.bottom, 4)
-    }
-}
-
-private struct Header: View {
-    @Environment(\.appLanguage) private var language
-    let session: RemoteSession
-
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.02, green: 0.06, blue: 0.10),
-                            Color(red: 0.03, green: 0.20, blue: 0.22),
-                            Color(red: 0.95, green: 0.45, blue: 0.17)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(alignment: .topTrailing) {
-                    Circle()
-                        .fill(.white.opacity(0.14))
-                        .frame(width: 220, height: 220)
-                        .offset(x: 55, y: -90)
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    VStack(alignment: .trailing, spacing: 10) {
-                        Text(session.isConnectable ? language.localized("READY", "可连接") : language.localized("DRAFT", "草稿"))
-                            .font(.caption.weight(.black))
-                            .foregroundStyle(.white.opacity(0.62))
-                        Text(session.isConnectable ? readyStatusText : language.localized("Need setup", "需要配置"))
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                    }
-                    .padding(24)
-                }
-
-            VStack(alignment: .leading, spacing: 14) {
-                Label(language.localized("Live operations cockpit", "实时运维工作台"), systemImage: "bolt.horizontal.circle.fill")
-                    .font(.headline)
-                    .foregroundStyle(.white.opacity(0.78))
-
-                Text(session.name.nilIfBlank ?? language.localized("Configure a server", "配置服务器"))
-                    .font(.system(size: 42, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-
-                Text(session.isConnectable
-                    ? session.localizedAddress(language: language)
-                    : language.localized("Add host, username, and port to run remote administration tasks.", "填写主机、用户名和端口后即可执行远程管理操作。"))
-                    .font(.title3)
-                    .foregroundStyle(.white.opacity(0.74))
-
-                HStack(spacing: 10) {
-                    CapabilityPill(title: language.localized("SSH Command", "SSH 命令"), symbol: "terminal.fill")
-                    CapabilityPill(title: language.localized("Remote Files + Transfer", "远程文件 + 传输"), symbol: "folder.fill.badge.gearshape")
-                    CapabilityPill(title: language.localized("Tunnels", "隧道"), symbol: "arrow.triangle.swap")
-                }
-            }
-            .padding(30)
-        }
-        .frame(minHeight: 250)
-        .shadow(color: .black.opacity(0.18), radius: 24, x: 0, y: 16)
-    }
-
-    private var readyStatusText: String {
-        switch session.connectionType {
-        case .ssh:
-            return language.localized("SSH profile configured", "SSH 配置已完成")
-        case .localShell:
-            return language.localized("Local shell ready", "本地 Shell 已就绪")
-        case .macDesktop:
-            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
-        case .rdp:
-            #if ENABLE_RDP_2
-            return language.localized("Windows RDP profile configured", "Windows RDP 配置已完成")
-            #else
-            return language.localized("Unsupported profile type", "不支持的配置类型")
-            #endif
-        }
     }
 }
 
@@ -3132,14 +2149,16 @@ enum CredentialOperationPolicy {
     }
 }
 
-private struct SessionEditor: View {
+/// Server Properties as a grouped Form. `trailing` adds the connection
+/// actions section below the editable fields.
+private struct SessionEditor<Trailing: View>: View {
     @Environment(\.appLanguage) private var language
     let targetID: UUID
     let closeGuard: ServerPropertiesWindowCloseGuard
     @Binding var draft: ServerPropertiesDraft
     @Binding var credentialOperationState: CredentialOperationState
     @Binding var credentialHasUnsavedInput: Bool
-    @AppStorage(MCPClientRegistrationStatusRefresh.storageKey) private var mcpRegistrationRefreshToken = ""
+    @ViewBuilder var trailing: Trailing
     @State private var password = ""
     @State private var credentialInputBaseline = ""
     @State private var passwordStatus = ""
@@ -3152,47 +2171,41 @@ private struct SessionEditor: View {
         CredentialOperationPolicy.SavedCredentialPresence = .unknown
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SettingsSectionTitle(language.localized("Connection", "连接"))
-
-            LabeledContent(language.localized("Display name", "显示名称")) {
-                TextField(language.localized("Display name", "显示名称"), text: $draft.name)
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("session-name-field")
-            }
-
-            LabeledContent(language.localized("Group Name", "分组名称")) {
-                TextField(language.localized("Optional group, e.g. Production", "可选分组，例如生产环境"), text: $draft.folder)
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("session-group-name-field")
-            }
-
-            connectionTypeField
-
-            if draft.connectionType != .localShell {
-                LabeledContent(language.localized("Host", "主机")) {
-                    TextField(language.localized("Host, e.g. 192.168.1.10", "主机，例如 192.168.1.10"), text: $draft.host)
-                        .textContentType(.URL)
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("session-host-field")
+        Form {
+            Section(language.localized("General", "通用")) {
+                TextField(text: $draft.name, prompt: Text(language.localized("e.g. web-01", "例如 web-01"))) {
+                    Text(language.localized("Name", "名称"))
                 }
+                .accessibilityIdentifier("session-name-field")
+
+                TextField(text: $draft.folder, prompt: Text(language.localized("Optional, e.g. Production", "可选，例如生产环境"))) {
+                    Text(language.localized("Group", "分组"))
+                }
+                .accessibilityIdentifier("session-group-name-field")
+
+                Picker(language.localized("Connection type", "连接类型"), selection: $draft.connectionType) {
+                    ForEach(RemoteConnectionType.selectableCases) { type in
+                        Text(type.displayName(language: language))
+                            .tag(type)
+                    }
+                }
+                .accessibilityIdentifier("session-connection-type-picker")
             }
 
             switch draft.connectionType {
             case .ssh:
-                sshFields
+                sshSections
             case .localShell:
-                localShellFields
+                localShellSections
             case .macDesktop:
-                macDesktopFields
+                macDesktopSections
             case .rdp:
-                rdpFields
+                rdpSections
             }
+
+            trailing
         }
-        .controlSize(.small)
+        .formStyle(.grouped)
         .onAppear(perform: initializeCredentialTarget)
         .onChange(of: draft.connectionType) { oldType, newType in
             if draft.port == oldType.defaultPort {
@@ -3202,235 +2215,206 @@ private struct SessionEditor: View {
         .onChange(of: currentCredentialTarget) { _, newTarget in
             credentialTargetDidChange(to: newTarget)
         }
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    private var macDesktopFields: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            LabeledContent(language.localized("Companion port", "Companion 端口")) {
-                TextField("49871", value: $draft.port, format: .number.grouping(.never))
-                    .textFieldStyle(.roundedBorder).frame(width: 110)
-            }
-            Text(language.localized("Install JTS Mac Companion on the host, then authorize and pair in the Desktop workspace. System Screen Sharing uses its own macOS login.", "在被控 Mac 安装 JTS Mac Companion，然后在桌面工作区完成授权和配对。系统屏幕共享使用 macOS 自身的登录。"))
-                .font(.caption).foregroundStyle(.secondary)
+    private var hostField: some View {
+        TextField(text: $draft.host, prompt: Text(language.localized("e.g. 192.168.1.10", "例如 192.168.1.10"))) {
+            Text(language.localized("Host", "主机"))
         }
+        .textContentType(.URL)
+        .accessibilityIdentifier("session-host-field")
     }
 
-    private var connectionTypeField: some View {
-        LabeledContent(language.localized("Connection type", "连接类型")) {
-            Picker(language.localized("Connection type", "连接类型"), selection: $draft.connectionType) {
-                ForEach(RemoteConnectionType.selectableCases) { type in
-                    Text(type.displayName(language: language))
-                        .tag(type)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 400, alignment: .leading)
-            .accessibilityIdentifier("session-connection-type-picker")
+    private var portField: some View {
+        TextField(value: $draft.port, format: .number.grouping(.never)) {
+            Text(language.localized("Port", "端口"))
         }
+        .accessibilityIdentifier("session-port-field")
     }
 
-    private var mcpClientRegistrationFields: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(language.localized("MCP Client Status", "MCP 客户端状态"))
-                .font(.subheadline.weight(.semibold))
-
-            MCPClientRegistrationStatusRows(
-                statuses: mcpClientRegistrationStatuses
-            )
-
+    @ViewBuilder
+    private var macDesktopSections: some View {
+        Section {
+            hostField
+            portField
+        } header: {
+            Text(language.localized("Connection", "连接"))
+        } footer: {
             Text(language.localized(
-                "Configure Claude, Cursor, Codex, Grok CLI, and Antigravity from the top-level MCP menu. JTS Terminal automatically decides whether registration is current, needs an update, or needs one macOS authorization. Profile visibility is controlled above.",
-                "请从顶部 MCP 菜单配置 Claude、Cursor、Codex、Grok CLI 和 Antigravity。JTS Terminal 会自动判断注册是否有效、是否需要更新或一次 macOS 授权；配置可见性由上方开关控制。"
+                "Install JTS Mac Companion on that Mac, then pair it in the Desktop workspace. System Screen Sharing uses that Mac's own login.",
+                "在被控 Mac 上安装 JTS Mac Companion，然后在桌面工作区配对。系统屏幕共享使用那台 Mac 自己的登录。"
             ))
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("mcp-client-registration-section")
     }
 
-    private var sshFields: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                LabeledContent(language.localized("Username", "用户名")) {
-                    TextField(language.localized("Username", "用户名"), text: $draft.username)
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("session-username-field")
-                }
+    @ViewBuilder
+    private var sshSections: some View {
+        Section(language.localized("Connection", "连接")) {
+            hostField
 
-                LabeledContent(language.localized("SSH port", "SSH 端口")) {
-                    TextField(language.localized("SSH port", "SSH 端口"), value: $draft.port, format: .number.grouping(.never))
-                        .labelsHidden()
-                        .frame(width: 96)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("session-port-field")
-                }
+            TextField(text: $draft.username, prompt: Text(language.localized("e.g. deploy", "例如 deploy"))) {
+                Text(language.localized("Username", "用户名"))
             }
+            .accessibilityIdentifier("session-username-field")
 
-            passwordFields
+            portField
 
-            LabeledContent(language.localized("Identity file", "私钥文件")) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        TextField(language.localized("Optional, e.g. ~/.ssh/id_ed25519", "可选，例如 ~/.ssh/id_ed25519"), text: $draft.identityFile)
-                            .labelsHidden()
-                            .textFieldStyle(.roundedBorder)
-                            .accessibilityIdentifier("session-identity-field")
-
-                        Button {
-                            chooseIdentityFile()
-                        } label: {
-                            Label(language.localized("Browse", "浏览"), systemImage: "folder")
-                        }
-                        .accessibilityIdentifier("session-identity-browse-button")
-                        .help(language.localized("Choose a private key file", "选择 SSH 私钥文件"))
-                    }
-
-                    if !draft.identityFile.isBlank,
-                       !SSHIdentityFileAccess.hasStoredAccess(for: draft.identityFile) {
-                        Label(
-                            language.localized(
-                                "Choose this key with Browse so JTS Terminal keeps permission to read it after relaunch.",
-                                "请用“浏览”选择此私钥，JTS Terminal 才能在重新打开后继续读取它。"
-                            ),
-                            systemImage: "exclamationmark.triangle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .accessibilityIdentifier("session-identity-access-hint")
-                    }
-
-                    if case .blockedBySandbox(let socketPath) = SSHAgentSandboxPolicy.availability() {
-                        Label(
-                            language.localized(
-                                "The ssh-agent at \(socketPath) can't be reached from App Sandbox, so its keys are not offered. Load the key into the macOS ssh-agent with ssh-add, or choose the key file with Browse.",
-                                "App Sandbox 无法访问位于 \(socketPath) 的 ssh-agent，其中的密钥不会被使用。请用 ssh-add 将密钥载入 macOS 自带的 ssh-agent，或通过“浏览”选择私钥文件。"
-                            ),
-                            systemImage: "exclamationmark.triangle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("session-ssh-agent-sandbox-hint")
-                    }
-                }
+            TextField(text: $draft.jumpHost, prompt: Text(language.localized("Optional bastion host", "可选跳板机"))) {
+                Text(language.localized("Jump host", "跳板机"))
             }
+            .accessibilityIdentifier("session-jump-host-field")
+        }
 
-            LabeledContent(language.localized("Jump host", "跳板机")) {
-                TextField(language.localized("Optional bastion host", "可选跳板机"), text: $draft.jumpHost)
+        Section {
+            passwordRows
+            identityFileRow
+        } header: {
+            Text(language.localized("Authentication", "身份验证"))
+        } footer: {
+            Text(passwordStorageHelpText)
+        }
+
+        Section {
+            DisclosureGroup(language.localized("Advanced", "高级")) {
+                Toggle(language.localized("X11 forwarding (-X)", "X11 转发 (-X)"), isOn: $draft.enableX11Forwarding)
+
+                TextField(text: $draft.remotePath, prompt: Text("~")) {
+                    Text(language.localized("Default path", "默认路径"))
+                }
+                .accessibilityIdentifier("session-remote-path-field")
+            }
+        } footer: {
+            Text(language.localized(
+                "X11 forwarding shows remote Linux apps on this Mac and needs XQuartz running.",
+                "X11 转发会把远程 Linux 应用显示在这台 Mac 上，需要运行 XQuartz。"
+            ))
+        }
+
+        mcpSection
+    }
+
+    private var identityFileRow: some View {
+        LabeledContent(language.localized("Private key", "私钥")) {
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 6) {
+                    TextField(text: $draft.identityFile, prompt: Text(language.localized("Optional, e.g. ~/.ssh/id_ed25519", "可选，例如 ~/.ssh/id_ed25519"))) {
+                        Text(language.localized("Private key", "私钥"))
+                    }
                     .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("session-jump-host-field")
+                    .accessibilityIdentifier("session-identity-field")
+
+                    Button(language.localized("Browse…", "浏览…")) {
+                        chooseIdentityFile()
+                    }
+                    .accessibilityIdentifier("session-identity-browse-button")
+                    .help(language.localized("Choose a private key file", "选择 SSH 私钥文件"))
+                }
+
+                if !draft.identityFile.isBlank,
+                   !SSHIdentityFileAccess.hasStoredAccess(for: draft.identityFile) {
+                    Label(
+                        language.localized(
+                            "Choose this key with Browse so JTS Terminal can still read it after relaunch.",
+                            "请用“浏览”选择此私钥，JTS Terminal 才能在重新打开后继续读取它。"
+                        ),
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("session-identity-access-hint")
+                }
+
+                if case .blockedBySandbox(let socketPath) = SSHAgentSandboxPolicy.availability() {
+                    Label(
+                        language.localized(
+                            "The ssh-agent at \(socketPath) can't be reached from App Sandbox. Load the key into the macOS ssh-agent with ssh-add, or choose the key file with Browse.",
+                            "App Sandbox 无法访问位于 \(socketPath) 的 ssh-agent。请用 ssh-add 将密钥载入 macOS 自带的 ssh-agent，或通过“浏览”选择私钥文件。"
+                        ),
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("session-ssh-agent-sandbox-hint")
+                }
             }
-
-            Divider()
-
-            sshOptionsFields
-
-            Divider()
-
-            mcpAccessFields
         }
     }
 
-    private var localShellFields: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label(
-                language.localized(
-                    "Starts a local interactive shell on this Mac. If you manually switch that pane to root, MCP terminal commands reuse the same PTY and run as root.",
-                    "在这台 Mac 上启动本地交互式 shell。如果你在该窗格里手动切到 root，MCP 终端命令会复用同一个 PTY 并以 root 执行。"
-                ),
-                systemImage: "apple.terminal"
+    @ViewBuilder
+    private var localShellSections: some View {
+        Section {
+            LabeledContent(
+                language.localized("Runs on", "运行于"),
+                value: language.localized("This Mac", "这台 Mac")
             )
-            .font(.callout)
-            .foregroundStyle(.secondary)
-
-            Divider()
-
-            mcpAccessFields
+        } footer: {
+            Text(language.localized(
+                "Opens an interactive shell on this Mac. If you switch a pane to root, AI terminal commands in that pane run as root too.",
+                "在这台 Mac 上打开交互式 shell。如果你把某个窗格切到 root，AI 在该窗格中的终端命令也会以 root 执行。"
+            ))
         }
+
+        mcpSection
     }
 
     #if ENABLE_RDP_2
-    private var rdpFields: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                LabeledContent(language.localized("Windows username", "Windows 用户名")) {
-                    TextField(language.localized("Windows username", "Windows 用户名"), text: $draft.username)
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("session-username-field")
-                }
+    @ViewBuilder
+    private var rdpSections: some View {
+        Section {
+            hostField
 
-                LabeledContent(language.localized("RDP port", "RDP 端口")) {
-                    TextField(language.localized("RDP port", "RDP 端口"), value: $draft.port, format: .number.grouping(.never))
-                        .labelsHidden()
-                        .frame(width: 96)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("session-port-field")
-                }
+            TextField(text: $draft.username, prompt: Text("Administrator")) {
+                Text(language.localized("Windows username", "Windows 用户名"))
             }
+            .accessibilityIdentifier("session-username-field")
 
-            LabeledContent(language.localized("Domain", "域")) {
-                TextField(language.localized("Optional Active Directory domain", "可选 Active Directory 域"), text: $draft.rdpDomain)
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("session-rdp-domain-field")
+            portField
+
+            TextField(text: $draft.rdpDomain, prompt: Text(language.localized("Optional", "可选"))) {
+                Text(language.localized("Domain", "域"))
             }
+            .accessibilityIdentifier("session-rdp-domain-field")
+        } header: {
+            Text(language.localized("Connection", "连接"))
+        } footer: {
+            Text(language.localized(
+                "Connects directly to this host. For a Windows PC on another network, pair its Windows Companion through a relay station.",
+                "直接连接此主机。如需连接其他网络中的 Windows 电脑，请通过中转站配对它的 Windows Companion。"
+            ))
+        }
 
-            Label(
-                language.localized(
-                    "Connects directly to the host above; Tailscale, an SSH alias, RD Gateway or port mapping are not required. For a Windows PC outside this network, pair its Windows Companion through a relay station.",
-                    "直接连接上面的主机，无需 Tailscale、SSH 别名、RD Gateway 或端口映射。如需连接不在此网络中的 Windows 电脑，请通过中转站配对它的 Windows Companion。"
-                ),
-                systemImage: "network"
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        Section {
+            passwordRows
+        } header: {
+            Text(passwordSectionTitle)
+        } footer: {
+            Text(passwordStorageHelpText)
+        }
 
-            passwordFields
-
-            Divider()
-
-            SettingsSectionTitle(language.localized("Desktop", "桌面"))
-
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                LabeledContent(language.localized("Width", "宽度")) {
+        Section(language.localized("Desktop", "桌面")) {
+            LabeledContent(language.localized("Size", "尺寸")) {
+                HStack(spacing: 6) {
                     TextField("1920", value: $draft.rdpDesktopWidth, format: .number.grouping(.never))
                         .labelsHidden()
-                        .frame(width: 88)
-                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 72)
                         .accessibilityIdentifier("session-rdp-width-field")
-                }
-
-                Text("×")
-                    .foregroundStyle(.secondary)
-
-                LabeledContent(language.localized("Height", "高度")) {
+                    Text("×")
+                        .foregroundStyle(.secondary)
                     TextField("1080", value: $draft.rdpDesktopHeight, format: .number.grouping(.never))
                         .labelsHidden()
-                        .frame(width: 88)
-                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 72)
                         .accessibilityIdentifier("session-rdp-height-field")
                 }
-
-                Text(language.localized("remote pixels", "远端像素"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
             }
 
             if !(640...7_680).contains(draft.rdpDesktopWidth) ||
                 !(480...4_320).contains(draft.rdpDesktopHeight) {
                 Label(
                     language.localized(
-                        "Desktop size must be 640–7680 × 480–4320 remote pixels.",
-                        "桌面尺寸必须为 640–7680 × 480–4320 远端像素。"
+                        "Use 640–7680 × 480–4320 pixels.",
+                        "请使用 640–7680 × 480–4320 像素。"
                     ),
                     systemImage: "exclamationmark.triangle.fill"
                 )
@@ -3439,109 +2423,75 @@ private struct SessionEditor: View {
             }
 
             Toggle(isOn: $draft.rdpClipboardEnabled) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(language.localized(
-                        "Bidirectional text clipboard",
-                        "双向文本剪贴板"
-                    ))
-                    Text(language.localized(
-                        "Text only; excludes files and images; never exposed to MCP.",
-                        "仅限文本；不含文件或图片；不会暴露给 MCP。"
-                    ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
+                Text(language.localized("Share text clipboard", "共享文本剪贴板"))
+                Text(language.localized(
+                    "Text only, in both directions. Never available to AI.",
+                    "仅文本，双向同步。不会提供给 AI。"
+                ))
             }
-            .toggleStyle(.switch)
             .accessibilityIdentifier("session-rdp-text-clipboard-toggle")
+        }
 
-            Divider()
-
-            SettingsSectionTitle(language.localized("Certificate Trust", "证书信任"))
-
-            LabeledContent(language.localized("Trust policy", "信任策略")) {
-                Picker(language.localized("Trust policy", "信任策略"), selection: $draft.rdpCertificateTrustMode) {
-                    Text(language.localized("System trust or pinned fingerprint", "系统信任或固定指纹"))
-                        .tag(RDPCertificateTrustMode.systemOrPinned)
-                    Text(language.localized("Pinned fingerprint only", "仅固定指纹"))
-                        .tag(RDPCertificateTrustMode.pinnedOnly)
-                }
-                .labelsHidden()
-                .frame(maxWidth: 300, alignment: .leading)
-                .accessibilityIdentifier("session-rdp-certificate-trust-picker")
+        Section {
+            Picker(language.localized("Trust", "信任方式"), selection: $draft.rdpCertificateTrustMode) {
+                Text(language.localized("System trust or pinned fingerprint", "系统信任或固定指纹"))
+                    .tag(RDPCertificateTrustMode.systemOrPinned)
+                Text(language.localized("Pinned fingerprint only", "仅固定指纹"))
+                    .tag(RDPCertificateTrustMode.pinnedOnly)
             }
+            .accessibilityIdentifier("session-rdp-certificate-trust-picker")
 
-            LabeledContent(language.localized("SHA-256 fingerprint", "SHA-256 指纹")) {
-                TextField(
-                    language.localized("64 hexadecimal characters", "64 位十六进制字符"),
-                    text: $draft.rdpPinnedCertificateSHA256
-                )
-                .labelsHidden()
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: .monospaced))
-                .accessibilityIdentifier("session-rdp-certificate-fingerprint-field")
+            TextField(
+                text: $draft.rdpPinnedCertificateSHA256,
+                prompt: Text(language.localized("64 hexadecimal characters", "64 位十六进制字符"))
+            ) {
+                Text(language.localized("SHA-256 fingerprint", "SHA-256 指纹"))
             }
+            .font(.body.monospaced())
+            .accessibilityIdentifier("session-rdp-certificate-fingerprint-field")
 
             if draft.rdpCertificateTrustMode == .pinnedOnly,
                RDPConnectionProfile.normalizedFingerprint(draft.rdpPinnedCertificateSHA256) == nil {
                 Label(
                     language.localized(
-                        "Pinned-only trust requires a complete SHA-256 fingerprint before this profile can be saved.",
-                        "仅固定指纹模式需要填写完整的 SHA-256 指纹后才能保存配置。"
+                        "Enter the complete fingerprint to save with pinned-only trust.",
+                        "使用“仅固定指纹”时，请填写完整指纹后再保存。"
                     ),
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.caption)
                 .foregroundStyle(.orange)
             }
-
+        } header: {
+            Text(language.localized("Certificate", "证书"))
+        } footer: {
             Text(language.localized(
-                "A first-seen self-signed certificate must be approved in the connection flow. Any later fingerprint change blocks the connection.",
-                "首次遇到自签名证书时必须在连接流程中确认；之后指纹发生变化会阻断连接。"
+                "You approve a self-signed certificate the first time you connect. A later fingerprint change blocks the connection.",
+                "首次连接时需确认自签名证书；之后指纹变化会阻断连接。"
             ))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            Divider()
-
-            SettingsSectionTitle("Windows Companion")
-
-            LabeledContent(language.localized("Companion policy", "Companion 策略")) {
-                Picker(language.localized("Companion policy", "Companion 策略"), selection: $draft.rdpCompanionPolicy) {
-                    Text(language.localized("Optional — allow visual-only mode", "可选 — 允许纯视觉模式"))
-                        .tag(RDPCompanionPolicy.optional)
-                    Text(language.localized("Required for structured tools", "结构化工具必须可用"))
-                        .tag(RDPCompanionPolicy.required)
-                }
-                .labelsHidden()
-                .frame(maxWidth: 300, alignment: .leading)
-                .accessibilityIdentifier("session-rdp-companion-policy-picker")
-            }
-
-            Text(language.localized(
-                "The Companion is optional for manual RDP display and input. When missing or incompatible, UI Automation, PowerShell, Windows files, and structured tasks fail closed with COMPANION_REQUIRED.",
-                "手动 RDP 显示和输入不要求安装 Companion。Companion 缺失或不兼容时，UI Automation、PowerShell、Windows 文件和结构化任务会以 COMPANION_REQUIRED 失败关闭。"
-            ))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            Label(
-                language.localized(
-                    "RDP credentials are encrypted in the local SQLite vault under this target and are never included in exported profile data. Keychain protects only the vault master key.",
-                    "RDP 凭据只会按此目标加密存入本地 SQLite 密码库，绝不会写入导出的配置数据；钥匙串仅保护密码库主密钥。"
-                ),
-                systemImage: "lock.doc.fill"
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            Divider()
-
-            mcpAccessFields
         }
+
+        Section {
+            Picker(language.localized("Requirement", "要求"), selection: $draft.rdpCompanionPolicy) {
+                Text(language.localized("Optional", "可选"))
+                    .tag(RDPCompanionPolicy.optional)
+                Text(language.localized("Required for AI tools", "AI 工具必需"))
+                    .tag(RDPCompanionPolicy.required)
+            }
+            .accessibilityIdentifier("session-rdp-companion-policy-picker")
+        } header: {
+            Text("Windows Companion")
+        } footer: {
+            Text(language.localized(
+                "Not needed to view and control the desktop yourself. Without it, AI tools for UI Automation, PowerShell, files and tasks are unavailable.",
+                "自己查看和操作桌面不需要它。没有它时，AI 的界面自动化、PowerShell、文件和任务工具不可用。"
+            ))
+        }
+
+        mcpSection
     }
     #else
-    private var rdpFields: some View {
+    private var rdpSections: some View {
         EmptyView()
     }
     #endif
@@ -3571,21 +2521,20 @@ private struct SessionEditor: View {
         #if ENABLE_RDP_2
         if draft.connectionType == .rdp {
             return language.localized(
-                "The RDP password is encrypted under this target UUID in the local SQLite credential vault. Keychain stores only the vault master key. The password is never exported or written to the SwiftData profile database.",
-                "RDP 密码会按此目标 UUID 加密存入本地 SQLite 密码库；钥匙串只保存密码库主密钥。密码不会导出，也不会写入 SwiftData 配置数据库。"
+                "Saved encrypted on this Mac for this target only. Never exported.",
+                "仅为此目标加密保存在这台 Mac 上，不会导出。"
             )
         }
         #endif
         return language.localized(
-            "Passwords are saved in the local encrypted SQLite vault. Interactive SSH sessions can use the saved password automatically when a password prompt appears.",
-            "密码会保存到本地加密 SQLite 密码库；交互式 SSH 会话在出现密码提示时会自动使用已保存密码。"
+            "The password is saved encrypted on this Mac and used when the server asks for it. Keys and the macOS ssh-agent work without a password.",
+            "密码加密保存在这台 Mac 上，服务器要求时自动使用。使用私钥或 macOS ssh-agent 时无需密码。"
         )
     }
 
-    private var passwordFields: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SettingsSectionTitle(passwordSectionTitle)
-
+    @ViewBuilder
+    private var passwordRows: some View {
+        LabeledContent(passwordSectionTitle) {
             PasswordRevealField(
                 passwordFieldPlaceholder,
                 text: passwordInputBinding,
@@ -3593,48 +2542,38 @@ private struct SessionEditor: View {
                 accessibilityIdentifier: "connection-password-field",
                 onSubmit: savePassword
             )
+        }
 
-            if draft.connectionType == .ssh {
-                SSHPasswordInputMetadata(password: password)
-            }
+        if draft.connectionType == .ssh {
+            SSHPasswordInputMetadata(password: password)
+        }
 
-            HStack {
-                Button {
-                    savePassword()
-                } label: {
-                    Label(language.localized("Save Password", "保存密码"), systemImage: "key.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("connection-save-password-button")
-                .disabled(!canStartCredentialOperation(.save))
-
-                Button {
-                    checkPassword()
-                } label: {
-                    Label(language.localized("Check Saved", "检查已保存"), systemImage: "checkmark.circle")
-                }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("connection-check-password-button")
-                .disabled(!canStartCredentialOperation(.check))
-
-                Button(role: .destructive) {
-                    isConfirmingPasswordDeletion = true
-                } label: {
-                    Label(language.localized("Delete", "删除"), systemImage: "trash")
-                }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("connection-delete-password-button")
-                .disabled(!canStartCredentialOperation(.delete))
-            }
-
+        HStack(spacing: 8) {
             Text(passwordStatus)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("connection-password-status")
 
-            Text(passwordStorageHelpText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+
+            Button(language.localized("Check Saved", "检查已保存")) {
+                checkPassword()
+            }
+            .accessibilityIdentifier("connection-check-password-button")
+            .disabled(!canStartCredentialOperation(.check))
+
+            Button(language.localized("Delete", "删除"), role: .destructive) {
+                isConfirmingPasswordDeletion = true
+            }
+            .accessibilityIdentifier("connection-delete-password-button")
+            .disabled(!canStartCredentialOperation(.delete))
+
+            Button(language.localized("Save Password", "保存密码")) {
+                savePassword()
+            }
+            .accessibilityIdentifier("connection-save-password-button")
+            .disabled(!canStartCredentialOperation(.save))
         }
         .confirmationDialog(
             passwordDeletionConfirmationTitle,
@@ -3678,69 +2617,25 @@ private struct SessionEditor: View {
         )
     }
 
-    private var sshOptionsFields: some View {
-        DisclosureGroup(language.localized("Advanced SSH Options", "高级 SSH 选项")) {
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle(language.localized("Enable X11 forwarding (-X)", "启用 X11 转发 (-X)"), isOn: $draft.enableX11Forwarding)
-
-                Text(language.localized(
-                    "Use X11 only when you need remote Linux GUI apps to appear on this Mac. JTS Terminal passes OpenSSH X11 options and uses XQuartz xauth when installed; macOS still needs XQuartz running for forwarded windows to display.",
-                    "仅在需要让远程 Linux GUI 应用显示在这台 Mac 上时使用 X11。JTS Terminal 会传递 OpenSSH X11 选项，并在安装 XQuartz 时使用 xauth；macOS 仍需要运行 XQuartz 才能显示转发窗口。"
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                LabeledContent(language.localized("Default path", "默认路径")) {
-                    TextField(language.localized("Default remote path", "默认远程路径"), text: $draft.remotePath)
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("session-remote-path-field")
-                }
-            }
-            .padding(.top, 8)
-        }
-    }
-
-    private var mcpAccessFields: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SettingsSectionTitle(language.localized("AI / MCP Access", "AI / MCP 访问"))
-
+    private var mcpSection: some View {
+        Section {
             Toggle(mcpEnabledTitle, isOn: $draft.mcpEnabled)
                 .accessibilityIdentifier("session-mcp-enabled-toggle")
 
-            Toggle(
-                persistentMCPControlTitle,
-                isOn: persistentMCPControlBinding
-            )
-            .disabled(!draft.mcpEnabled)
-            .accessibilityIdentifier("session-mcp-always-control-toggle")
+            Toggle(persistentMCPControlTitle, isOn: persistentMCPControlBinding)
+                .disabled(!draft.mcpEnabled)
+                .accessibilityIdentifier("session-mcp-always-control-toggle")
 
-            Text(language.localized(
-                persistentMCPControlHelpEnglish,
-                persistentMCPControlHelpChinese
-            ))
-                .font(.caption)
-                .foregroundStyle(.orange)
-
-            LabeledContent(language.localized("MCP alias", "MCP 别名")) {
-                TextField(proposedMCPAlias, text: $draft.mcpAlias)
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(!draft.mcpEnabled)
-                    .accessibilityIdentifier("session-mcp-alias-field")
+            TextField(text: $draft.mcpAlias, prompt: Text(proposedMCPAlias)) {
+                Text(language.localized("MCP alias", "MCP 别名"))
             }
-
+            .disabled(!draft.mcpEnabled)
+            .accessibilityIdentifier("session-mcp-alias-field")
+        } header: {
+            Text(language.localized("AI & MCP", "AI 与 MCP"))
+        } footer: {
             Text(mcpAccessDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Divider()
-                .padding(.vertical, 2)
-
-            mcpClientRegistrationFields
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("session-mcp-access-section")
     }
 
     private var proposedMCPAlias: String {
@@ -3754,14 +2649,14 @@ private struct SessionEditor: View {
     private var mcpEnabledTitle: String {
         switch draft.connectionType {
         case .ssh:
-            return language.localized("Enable MCP for this SSH server", "为这台 SSH 服务器启用 MCP")
+            return language.localized("Allow AI to use this server", "允许 AI 使用此服务器")
         case .localShell:
-            return language.localized("Enable MCP for this Local Shell", "为这个本地 Shell 启用 MCP")
+            return language.localized("Allow AI to use this Local Shell", "允许 AI 使用此本地 Shell")
         case .macDesktop:
             return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
         case .rdp:
             #if ENABLE_RDP_2
-            return language.localized("Enable MCP for this Windows target", "为这个 Windows 目标启用 MCP")
+            return language.localized("Allow AI to use this Windows target", "允许 AI 使用此 Windows 目标")
             #else
             return language.localized("Enable MCP discovery", "启用 MCP 发现")
             #endif
@@ -3770,15 +2665,10 @@ private struct SessionEditor: View {
 
     private var persistentMCPControlTitle: String {
         switch draft.connectionType {
-        case .ssh:
+        case .ssh, .localShell:
             return language.localized(
-                "Always allow MCP Control for all terminal sessions",
-                "长期允许 MCP 控制此服务器的所有终端会话"
-            )
-        case .localShell:
-            return language.localized(
-                "Always allow MCP Control for all Local Shell sessions",
-                "长期允许 MCP 控制此配置的所有本地 Shell 会话"
+                "AI can control every terminal of this profile",
+                "AI 可控制此配置的所有终端"
             )
         case .macDesktop:
             return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
@@ -3791,67 +2681,25 @@ private struct SessionEditor: View {
     }
 
     private var mcpAccessDescription: String {
-        #if ENABLE_RDP_2
-        if draft.connectionType == .rdp {
+        switch draft.connectionType {
+        case .ssh:
             return language.localized(
-                "Enabling this target lets registered AI clients use the enabled Windows scope directly. Usage is recorded in Audit. Disconnect and reconnect only cancel in-flight work; revoke a client from AI Access Management. MCP clipboard access remains unavailable; the separate interactive text clipboard never enters AI authorization.",
-                "启用后，已注册的 AI 客户端可以直接使用此 Windows 目标的已开启权限。使用情况会记入审计。断开和重连只会取消正在执行的任务；需要时再从“AI 访问管理”撤销某个客户端。MCP 仍不能访问剪贴板；独立的交互式文本剪贴板不会进入 AI 访问管理。"
+                "Registered AI clients can run commands and read and write files on this server. Without the second switch, turn AI control on per terminal tab. A pane in a root shell runs AI commands as root. Manage AI clients in Settings > MCP.",
+                "已注册的 AI 客户端可以在这台服务器上执行命令、读写文件。未开启第二个开关时，需要在终端标签栏中逐个开启 AI 控制。处于 root shell 的窗格会以 root 执行 AI 命令。在“设置 > MCP”中管理 AI 客户端。"
+            )
+        case .localShell:
+            return language.localized(
+                "Registered AI clients can use the terminals of this profile. Without the second switch, turn AI control on per terminal tab. A pane you switched to root runs AI commands as root. Manage AI clients in Settings > MCP.",
+                "已注册的 AI 客户端可以使用此配置的终端。未开启第二个开关时，需要在终端标签栏中逐个开启 AI 控制。你切到 root 的窗格会以 root 执行 AI 命令。在“设置 > MCP”中管理 AI 客户端。"
+            )
+        case .macDesktop:
+            return ""
+        case .rdp:
+            return language.localized(
+                "Registered AI clients can use this Windows target within the enabled scope until you revoke them in AI Access. Usage is recorded there. AI never gets the clipboard.",
+                "已注册的 AI 客户端可以在已开启的范围内使用此 Windows 目标，直到你在“AI 访问”中撤销。使用情况会记录在那里。AI 不会获得剪贴板。"
             )
         }
-        #endif
-        return language.localized(
-            "Only profiles explicitly enabled here are visible to AI IDEs. MCP calls are trusted automation with allowlist, timeout, output limit, and audit logging.",
-            "只有在这里明确启用的配置会暴露给 AI IDE。MCP 调用属于受信任自动化，并受白名单、超时、输出限制和审计记录约束。"
-        )
-    }
-
-    private var persistentMCPControlHelpEnglish: String {
-        switch draft.connectionType {
-        case .ssh:
-            return "When enabled, every running SSH terminal pane for this server is authorized for jts_terminal_exec without using the per-pane temporary switch. If a pane is a root shell, MCP commands run as root."
-        case .localShell:
-            return "When enabled, every running Local Shell pane for this profile is authorized for jts_terminal_exec without using the per-pane temporary switch. If you switch a pane to root, MCP commands run as root in that same shell."
-        case .macDesktop:
-            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
-        case .rdp:
-            #if ENABLE_RDP_2
-            return "When enabled, registered AI clients can use this Windows target's persistent control scope directly. Disconnect, reconnect, and manual takeover cancel in-flight work. Revoke a client from AI Access Management."
-            #else
-            return "Persistent terminal-pane control is not available for this profile type."
-            #endif
-        }
-    }
-
-    private var persistentMCPControlHelpChinese: String {
-        switch draft.connectionType {
-        case .ssh:
-            return "开启后，这台服务器的每个正在运行的 SSH 终端窗格都会授权给 jts_terminal_exec，无需再打开单个窗格的临时开关。如果某个窗格是 root shell，MCP 命令也会以 root 执行。"
-        case .localShell:
-            return "开启后，这个配置的每个正在运行的本地 Shell 窗格都会授权给 jts_terminal_exec，无需再打开单个窗格的临时开关。如果你把某个窗格切到 root，MCP 命令会在同一个 root shell 里执行。"
-        case .macDesktop:
-            return language.localized("Mac desktop is configured in the Desktop workspace.", "在桌面工作区配置 Mac 桌面。")
-        case .rdp:
-            #if ENABLE_RDP_2
-            return "开启后，已注册的 AI 客户端可以直接使用这个 Windows 目标的长期控制范围。断开、重连和人工停止只会取消正在执行的任务；需要时再从“AI 访问管理”撤销某个客户端。"
-            #else
-            return "此配置类型不支持长期终端窗格控制。"
-            #endif
-        }
-    }
-
-    private var mcpClientRegistrationStatuses: [MCPClientRegistrationStatus] {
-        _ = mcpRegistrationRefreshToken
-        #if JTS_UI_TEST_SUPPORT
-        let fixtureStatuses = MCPClientKind.registrationDisplayOrder.compactMap {
-            UITestMCPRegistrationEnvironment.registrationStatus(for: $0)
-        }
-        if fixtureStatuses.count == MCPClientKind.registrationDisplayOrder.count {
-            return fixtureStatuses
-        }
-        #endif
-        return MCPClientRegistrar().registrationStatuses(
-            commandPath: MCPClientConfiguration.commandPath()
-        )
     }
 
     private var persistentMCPControlBinding: Binding<Bool> {
@@ -4489,51 +3337,62 @@ private struct ServerPropertiesSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(language.localized("Server Properties", "服务器属性"))
-                        .font(.title2.weight(.semibold))
-                    Text(hasChanges ? language.localized("Unsaved changes", "未保存更改") : session.localizedAddress(language: language))
-                        .font(.callout)
+            SessionEditor(
+                targetID: session.targetID,
+                closeGuard: closeGuard,
+                draft: $draft,
+                credentialOperationState: $credentialOperationState,
+                credentialHasUnsavedInput: $credentialHasUnsavedInput
+            ) {
+                Section(language.localized("Test and Open", "测试与打开")) {
+                    if hasChanges {
+                        Text(language.localized(
+                            "Save your changes to test or open this connection.",
+                            "保存更改后才能测试或打开此连接。"
+                        ))
                         .foregroundStyle(.secondary)
-                    uiTestingMCPStatusAnchors
-                }
-
-                Spacer()
-
-                if deleteServer != nil {
-                    Button(role: .destructive) {
-                        isConfirmingDeletion = true
-                    } label: {
-                        Label(language.localized("Delete Server…", "删除服务器…"), systemImage: "trash")
+                    } else {
+                        ConnectionActions(
+                            session: session,
+                            openInteractive: openInteractive,
+                            disabledReason: credentialActionsDisabledReason
+                        )
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                }
+            }
+
+            Divider()
+
+            HStack(spacing: 8) {
+                if deleteServer != nil {
+                    Button(language.localized("Delete Server…", "删除服务器…"), role: .destructive) {
+                        isConfirmingDeletion = true
+                    }
                     .disabled(credentialOperationState.isRunning)
                     .accessibilityIdentifier("server-properties-delete-button")
                 }
 
-                Button {
+                Spacer(minLength: 12)
+
+                if !saveStatus.isBlank {
+                    Text(saveStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Button(language.localized("Cancel", "取消")) {
                     guard !credentialOperationState.isRunning else { return }
                     close()
-                } label: {
-                    Text(language.localized("Cancel", "取消"))
                 }
-                .buttonStyle(.bordered)
                 .keyboardShortcut(.cancelAction)
-                .controlSize(.small)
                 .disabled(credentialOperationState.isRunning)
                 .accessibilityIdentifier("server-properties-cancel-button")
 
-                Button {
+                Button(language.localized("Save", "保存")) {
                     save()
-                } label: {
-                    Text(language.localized("Save", "保存"))
-                        .frame(minWidth: 48)
                 }
-                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .controlSize(.small)
                 .disabled(
                     !hasChanges ||
                     !draft.isConnectable ||
@@ -4542,55 +3401,10 @@ private struct ServerPropertiesSheet: View {
                 )
                 .accessibilityIdentifier("server-properties-save-button")
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 14)
-            .background(.regularMaterial)
-
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    SettingsCard {
-                        SessionEditor(
-                            targetID: session.targetID,
-                            closeGuard: closeGuard,
-                            draft: $draft,
-                            credentialOperationState: $credentialOperationState,
-                            credentialHasUnsavedInput: $credentialHasUnsavedInput
-                        )
-                    }
-
-                    if !saveStatus.isBlank {
-                        Label(saveStatus, systemImage: "checkmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    SettingsCard {
-                        if hasChanges {
-                            Label(
-                                language.localized(
-                                    "Save changes to enable connection actions.",
-                                    "保存更改后才能启用连接操作。"
-                                ),
-                                systemImage: "square.and.arrow.down"
-                            )
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        } else {
-                            ConnectionActions(
-                                session: session,
-                                openInteractive: openInteractive,
-                                disabledReason: credentialActionsDisabledReason
-                            )
-                        }
-                    }
-                }
-                .padding(20)
-            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
-        .frame(minWidth: 680, idealWidth: 720, minHeight: 600, idealHeight: 700)
-        .background(WorkspaceBackground())
+        .frame(minWidth: 540, idealWidth: 600, minHeight: 520, idealHeight: 720)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("server-properties-content")
         .confirmationDialog(
@@ -4689,23 +3503,6 @@ private struct ServerPropertiesSheet: View {
         return "\(alias)-\(index)"
     }
 
-    @ViewBuilder
-    private var uiTestingMCPStatusAnchors: some View {
-        #if JTS_UI_TEST_SUPPORT
-        if ProcessInfo.processInfo.environment["JTS_TERMINAL_UI_TESTING"] == "1" {
-            HStack(spacing: 1) {
-                ForEach(MCPClientKind.registrationDisplayOrder, id: \.self) { client in
-                    Text(client.displayName)
-                        .font(.system(size: 1))
-                        .foregroundStyle(.clear)
-                        .frame(width: 1, height: 1)
-                        .accessibilityLabel(client.displayName)
-                        .accessibilityIdentifier("mcp-registration-status-\(client.identifier)")
-                }
-            }
-        }
-        #endif
-    }
 }
 
 private struct ConnectionActions: View {
@@ -4764,111 +3561,71 @@ private struct ConnectionActions: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsSectionTitle(language.localized(
-                "\(session.connectionType.displayName(language: language)) Actions",
-                "\(session.connectionType.displayName(language: language)) 操作"
-            ))
-
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
-                GridRow {
-                    if session.connectionType == .ssh {
-                        Button {
-                            runTestConnection()
-                        } label: {
-                            Label(
-                                isConnectionTestRunning
-                                    ? language.localized("Testing...", "正在测试...")
-                                    : language.localized("Test SSH Connection", "测试 SSH 连接"),
-                                systemImage: "checkmark.seal.fill"
-                            )
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityLabel(
-                            isConnectionTestRunning
-                                ? language.localized("Testing...", "正在测试...")
-                                : language.localized("Test SSH Connection", "测试 SSH 连接")
-                        )
-                        .accessibilityIdentifier("test-ssh-connection-button")
-                        .disabled(!session.isConnectable || isConnectionTestRunning || actionsDisabled)
-
-                        Button {
-                            openInteractiveIfEnabled()
-                        } label: {
-                            Label(language.localized("Open Interactive SSH", "打开交互式 SSH"), systemImage: "terminal")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("open-interactive-ssh-button")
-                        .disabled(!session.isConnectable || actionsDisabled)
-                    } else if session.connectionType == .localShell {
-                        Button {
-                            openInteractiveIfEnabled()
-                        } label: {
-                            Label(language.localized("Open Local Shell", "打开本地 Shell"), systemImage: "apple.terminal")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("open-local-shell-button")
-                        .disabled(actionsDisabled)
-
-                        Text(language.localized(
-                            "After the shell opens, switch it to root manually if needed; AI terminal commands reuse that same authorized PTY.",
-                            "Shell 打开后如需 root 请先手动切换；AI 终端命令会复用同一个已授权 PTY。"
-                        ))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    } else {
-                        #if ENABLE_RDP_2
-                        Button {
-                            openInteractiveIfEnabled()
-                        } label: {
-                            Label(language.localized("Open Desktop Workspace", "打开桌面工作区"), systemImage: "desktopcomputer")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("open-rdp-desktop-button")
-                        .disabled(!session.isConnectable || actionsDisabled)
-
-                        Text(language.localized(
-                            "The Desktop workspace reports the real FreeRDP runtime and Companion state. It does not mark this profile connected until the native runtime succeeds.",
-                            "桌面工作区会显示真实的 FreeRDP 运行时和 Companion 状态；只有原生运行时连接成功后才会标记为已连接。"
-                        ))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        #else
-                        Button {} label: {
-                            Label(language.localized("Open Server Properties", "打开服务器属性"), systemImage: "slider.horizontal.3")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(true)
-
-                        Text(language.localized(
-                            "This saved profile type is not included in the current App Store build.",
-                            "当前 App Store 构建不包含此已保存配置类型。"
-                        ))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        #endif
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                switch session.connectionType {
+                case .ssh:
+                    Button(
+                        isConnectionTestRunning
+                            ? language.localized("Testing…", "正在测试…")
+                            : language.localized("Test Connection", "测试连接")
+                    ) {
+                        runTestConnection()
                     }
+                    .accessibilityLabel(
+                        isConnectionTestRunning
+                            ? language.localized("Testing...", "正在测试...")
+                            : language.localized("Test SSH Connection", "测试 SSH 连接")
+                    )
+                    .accessibilityIdentifier("test-ssh-connection-button")
+                    .disabled(!session.isConnectable || isConnectionTestRunning || actionsDisabled)
+
+                    Button(language.localized("Open Terminal", "打开终端")) {
+                        openInteractiveIfEnabled()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("open-interactive-ssh-button")
+                    .disabled(!session.isConnectable || actionsDisabled)
+                case .localShell:
+                    Button(language.localized("Open Local Shell", "打开本地 Shell")) {
+                        openInteractiveIfEnabled()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("open-local-shell-button")
+                    .disabled(actionsDisabled)
+                case .rdp, .macDesktop:
+                    #if ENABLE_RDP_2
+                    Button(language.localized("Open Desktop", "打开桌面")) {
+                        openInteractiveIfEnabled()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("open-rdp-desktop-button")
+                    .disabled(!session.isConnectable || actionsDisabled)
+                    #else
+                    Text(language.localized(
+                        "This saved profile type is not included in the current App Store build.",
+                        "当前 App Store 构建不包含此已保存配置类型。"
+                    ))
+                    .foregroundStyle(.secondary)
+                    #endif
                 }
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Label(language.localized("Connection status", "连接状态"), systemImage: statusIcon)
-                    .foregroundStyle(statusColor)
+            Label {
                 Text(disabledReason ?? connectionStatus?.displayText ?? connectionErrorMessage ?? defaultStatusText)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(connectionErrorMessage == nil && disabledReason == nil ? Color.secondary : Color.red)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("connection-status-text")
                     .accessibilityLabel(disabledReason ?? connectionStatus?.displayText ?? connectionErrorMessage ?? defaultStatusText)
-                #if JTS_UI_TEST_SUPPORT
-                uiTestingSmokeStatusAnchor
-                #endif
+            } icon: {
+                Image(systemName: statusIcon)
+                    .foregroundStyle(statusColor)
             }
+            #if JTS_UI_TEST_SUPPORT
+            uiTestingSmokeStatusAnchor
+            #endif
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .sheet(item: testCredentialPromptBinding) { descriptor in
@@ -5102,201 +3859,6 @@ private struct ConnectionActions: View {
     }
     #endif
 
-}
-
-private struct CommandCenter: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \CommandHistoryEntry.ranAt, order: .reverse) private var historyEntries: [CommandHistoryEntry]
-    @Query(sort: \SavedCommandMacro.updatedAt, order: .reverse) private var commandMacros: [SavedCommandMacro]
-    let session: RemoteSession
-    @State private var command = "uptime && df -h"
-    @State private var macroName = "Health Check"
-    @State private var historySearch = ""
-    @State private var result: CommandResult?
-    @State private var errorMessage: String?
-    @State private var isRunning = false
-
-    private let remoteRunner = AuthenticatedRemoteCommandRunner()
-
-    private var sessionHistory: [CommandHistoryEntry] {
-        filteredBySession(historyEntries)
-            .filter { historySearch.isBlank || $0.command.localizedCaseInsensitiveContains(historySearch) }
-            .prefix(8)
-            .map { $0 }
-    }
-
-    private var sessionMacros: [SavedCommandMacro] {
-        filteredBySession(commandMacros)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                SectionTitle("Remote Command")
-                Spacer()
-                Button {
-                    runCommand()
-                } label: {
-                    Label(isRunning ? "Running..." : "Run", systemImage: "play.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!session.isConnectable || command.isBlank || isRunning)
-            }
-
-            TextEditor(text: $command)
-                .font(.system(.body, design: .monospaced))
-                .frame(minHeight: 86)
-                .scrollContentBackground(.hidden)
-                .padding(12)
-                .background(.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
-
-            HStack {
-                TextField("Macro name", text: $macroName)
-                Button {
-                    saveMacro()
-                } label: {
-                    Label("Save Macro", systemImage: "bookmark.fill")
-                }
-                .buttonStyle(.bordered)
-                .disabled(command.isBlank || macroName.isBlank || !session.isConnectable)
-            }
-
-            if !sessionMacros.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Command macros")
-                        .font(.headline)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(sessionMacros) { macro in
-                                HStack(spacing: 6) {
-                                    Button {
-                                        command = macro.command
-                                        macroName = macro.name
-                                    } label: {
-                                        Label(macro.name, systemImage: "play.rectangle")
-                                    }
-                                    .buttonStyle(.bordered)
-
-                                    Button(role: .destructive) {
-                                        modelContext.delete(macro)
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                    }
-                                    .buttonStyle(.borderless)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("History")
-                        .font(.headline)
-                    Spacer()
-                    TextField("Search history", text: $historySearch)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 240)
-                }
-
-                if sessionHistory.isEmpty {
-                    Text("No command history for this session yet.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(sessionHistory) { entry in
-                        HStack {
-                            Button {
-                                command = entry.command
-                            } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(entry.command)
-                                        .font(.system(.caption, design: .monospaced))
-                                        .lineLimit(1)
-                                    Text(entry.ranAt, style: .relative)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-
-                            Text(entry.succeeded ? "0" : "\(entry.exitCode)")
-                                .font(.caption.monospaced())
-                                .foregroundStyle(entry.succeeded ? Color.green : Color.orange)
-
-                            Button(role: .destructive) {
-                                modelContext.delete(entry)
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                        .padding(8)
-                        .background(.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
-                    }
-                }
-            }
-
-            TerminalOutput(result: result, errorMessage: errorMessage)
-        }
-        .padding(20)
-        .panelBackground()
-    }
-
-    private func runCommand() {
-        guard session.isConnectable else { return }
-        let requestedCommand = command
-        let frozenSession = SSHSessionLaunchSnapshot(session: session).materializedSession()
-        let historySession = session
-        isRunning = true
-        errorMessage = nil
-
-        Task {
-            do {
-                result = try await remoteRunner.runSSH(
-                    session: frozenSession,
-                    remoteCommand: requestedCommand
-                )
-                if let result {
-                    modelContext.insert(CommandHistoryEntry(
-                        session: historySession,
-                        command: requestedCommand,
-                        exitCode: result.exitCode
-                    ))
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-                modelContext.insert(CommandHistoryEntry(
-                    session: historySession,
-                    command: requestedCommand,
-                    exitCode: -1
-                ))
-            }
-            isRunning = false
-        }
-    }
-
-    private func saveMacro() {
-        if let existing = sessionMacros.first(where: { $0.name.caseInsensitiveCompare(macroName) == .orderedSame }) {
-            existing.update(name: macroName, command: command)
-        } else {
-            modelContext.insert(SavedCommandMacro(session: session, name: macroName, command: command))
-        }
-    }
-
-    private func filteredBySession<T>(_ values: [T]) -> [T] where T: AnyObject {
-        values.filter { value in
-            if let value = value as? CommandHistoryEntry {
-                return value.sessionConnectionKey == session.connectionKey
-            }
-            if let value = value as? SavedCommandMacro {
-                return value.sessionConnectionKey == session.connectionKey
-            }
-            return false
-        }
-    }
 }
 
 enum RemoteFileSortMode: String, CaseIterable, Identifiable {
@@ -8506,7 +7068,7 @@ private struct PasswordRevealField: View {
     var body: some View {
         HStack(spacing: 6) {
             passwordField
-                .textFieldStyle(.plain)
+                .textFieldStyle(.roundedBorder)
                 .textContentType(.password)
                 .disableAutocorrection(true)
                 .focused($isFocused)
@@ -8528,18 +7090,9 @@ private struct PasswordRevealField: View {
             .foregroundStyle(.secondary)
             .disabled(isDisabled)
             .accessibilityLabel(revealAccessibilityLabel)
+            .help(revealAccessibilityLabel)
             .accessibilityIdentifier("\(accessibilityIdentifier)-reveal-button")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(
-            Color(nsColor: .textBackgroundColor),
-            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(isFocused ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: 1)
-        )
         .onAppear(perform: focusIfNeeded)
     }
 
@@ -9921,83 +8474,23 @@ private struct ProfilePortabilityPanel: View {
     }
 }
 
-private struct TerminalOutput: View {
-    @Environment(\.appLanguage) private var language
-    let result: CommandResult?
-    let errorMessage: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let result {
-                HStack {
-                    Label(result.succeeded ? "Exit 0" : "Exit \(result.exitCode)", systemImage: result.succeeded ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                        .foregroundStyle(result.succeeded ? Color.green : Color.red)
-                    Spacer()
-                    Text(result.command)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-
-            ScrollView {
-                Text(result?.displayText ?? errorMessage ?? language.localized("Output will appear here.", "输出会显示在这里。"))
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(errorMessage == nil ? Color.white.opacity(0.88) : Color.red)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-            }
-            .frame(minHeight: 210)
-            .background(Color(red: 0.02, green: 0.04, blue: 0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        }
-    }
-}
-
 private struct EmptyWorkspace: View {
     @Environment(\.appLanguage) private var language
     let addSession: () -> Void
 
     var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "rectangle.connected.to.line.below")
-                .font(.system(size: 56))
-                .foregroundStyle(.teal)
-            Text(language.localized("Add your first connection", "添加第一个连接"))
-                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+        ContentUnavailableView {
+            Label(language.localized("No Server Selected", "未选择服务器"), systemImage: "server.rack")
+        } description: {
             Text(language.localized(
-                "Create an SSH profile for terminal, files, and tunnels; use Local Shell without a remote host; or add a Windows RDP desktop. RDP verifies its certificate before trust, and an optional paired Companion adds structured Windows automation.",
-                "创建 SSH 配置以使用终端、文件和隧道；无需远程主机即可使用本地 Shell；也可以添加 Windows RDP 桌面。RDP 会在信任前验证证书，可选配对的 Companion 可增加结构化 Windows 自动化能力。"
+                "Add an SSH server, a Local Shell or a remote desktop to get started.",
+                "添加 SSH 服务器、本地 Shell 或远程桌面即可开始。"
             ))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 520)
-            Button(action: addSession) {
-                Label(language.localized("Add Connection", "添加连接"), systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
+        } actions: {
+            Button(language.localized("Add Server", "添加服务器"), action: addSession)
+                .buttonStyle(.borderedProminent)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WorkspaceBackground())
         .accessibilityIdentifier("empty-workspace-content")
-    }
-}
-
-private struct CapabilityPill: View {
-    let title: String
-    let symbol: String
-
-    var body: some View {
-        Label(title, systemImage: symbol)
-            .font(.headline)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 13)
-            .padding(.vertical, 9)
-            .background(.white.opacity(0.16), in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(.white.opacity(0.18), lineWidth: 1)
-            }
     }
 }
 
@@ -10009,145 +8502,8 @@ private struct SectionTitle: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Capsule()
-                .fill(AppTheme.signal)
-                .frame(width: 3, height: 17)
-            Text(title)
-                .font(.headline.weight(.semibold))
-        }
-    }
-}
-
-private struct SettingsSectionTitle: View {
-    let title: String
-
-    init(_ title: String) {
-        self.title = title
-    }
-
-    var body: some View {
         Text(title)
             .font(.headline)
-            .foregroundStyle(.primary)
-    }
-}
-
-private struct MCPClientRegistrationStatusRows: View {
-    @Environment(\.appLanguage) private var language
-    let statuses: [MCPClientRegistrationStatus]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(statuses, id: \.client) { status in
-                HStack(spacing: 10) {
-                    Image(systemName: "app.connected.to.app.below.fill")
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-
-                    Text(status.client.displayName)
-                        .font(.callout)
-                        .accessibilityIdentifier("mcp-registration-status-\(status.client.identifier)")
-
-                    Spacer(minLength: 10)
-
-                    HStack(spacing: 4) {
-                        Image(systemName: statusSymbol(for: status))
-                            .imageScale(.small)
-                            .accessibilityHidden(true)
-                        Text(statusTitle(for: status))
-                            .accessibilityIdentifier("mcp-registration-state-\(status.client.identifier)")
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(statusColor(for: status))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        statusColor(for: status).opacity(0.12),
-                        in: Capsule(style: .continuous)
-                    )
-                    .accessibilityLabel("\(status.client.displayName) \(statusTitle(for: status))")
-                }
-            }
-        }
-        .accessibilityIdentifier("mcp-registration-status-rows")
-    }
-
-    private func statusTitle(for status: MCPClientRegistrationStatus) -> String {
-        switch status.state {
-        case .registered:
-            return language.localized("Registered", "已注册")
-        case .needsUpdate:
-            return language.localized("Needs Update", "需要更新")
-        case .accessRequired:
-            return language.localized("Access Required", "需要配置授权")
-        case .invalidConfiguration:
-            return language.localized("Config Invalid", "配置无效")
-        case .notRegistered:
-            return language.localized("Not Registered", "未注册")
-        }
-    }
-
-    private func statusSymbol(for status: MCPClientRegistrationStatus) -> String {
-        switch status.state {
-        case .registered:
-            return "checkmark.circle.fill"
-        case .needsUpdate:
-            return "arrow.triangle.2.circlepath.circle.fill"
-        case .accessRequired:
-            return "folder.badge.questionmark"
-        case .invalidConfiguration:
-            return "exclamationmark.triangle.fill"
-        case .notRegistered:
-            return "circle.dashed"
-        }
-    }
-
-    private func statusColor(for status: MCPClientRegistrationStatus) -> Color {
-        switch status.state {
-        case .registered:
-            return .green
-        case .needsUpdate:
-            return .orange
-        case .accessRequired:
-            return .orange
-        case .invalidConfiguration:
-            return .red
-        case .notRegistered:
-            return .secondary
-        }
-    }
-}
-
-private struct SettingsCard<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        content
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                .regularMaterial,
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(AppTheme.border, lineWidth: 1)
-            }
-    }
-}
-
-private struct WorkspaceBackground: View {
-    var body: some View {
-        AppTheme.canvas
-        .ignoresSafeArea()
-    }
-}
-
-private struct SidebarBackground: View {
-    var body: some View {
-        AppTheme.sidebar
-        .ignoresSafeArea()
     }
 }
 
@@ -10164,20 +8520,6 @@ private enum AppTheme {
     static let selectionBorder = Color.accentColor.opacity(0.28)
     static let selectionStrong = Color.accentColor.opacity(0.20)
     static let selectionBorderStrong = Color.accentColor.opacity(0.42)
-}
-
-private struct PrimarySoftButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                Color.accentColor.opacity(configuration.isPressed ? 0.75 : 1),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-            )
-    }
 }
 
 private struct PanelBackground: ViewModifier {
