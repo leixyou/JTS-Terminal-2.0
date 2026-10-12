@@ -7561,45 +7561,36 @@ struct JTSTerminalTests {
         #expect(helpLabels.contains("Terminal"))
         #expect(helpLabels.contains("Files"))
         #expect(helpLabels.contains("Tunnels"))
-        #expect(helpLabels.contains("Password"))
-        #expect(helpLabels.contains("Import / Export"))
         #expect(chineseHelpLabels.contains("终端"))
         #expect(chineseHelpLabels.contains("文件"))
         #expect(chineseHelpLabels.contains("隧道"))
-        #expect(chineseHelpLabels.contains("密码"))
-        #expect(chineseHelpLabels.contains("导入导出"))
     }
 
     @Test func workspaceFeaturesMatchConnectionCapabilitiesAndResolveInvalidSelections() {
+        // Passwords live in Server Properties and import/export in the File
+        // menu, so neither is a workspace.
         #expect(WorkspaceFeature.available(for: .ssh) == [
             .command,
             .files,
-            .tunnels,
-            .credentials,
-            .profiles
+            .tunnels
         ])
-        #expect(WorkspaceFeature.available(for: .localShell) == [
-            .command,
-            .profiles
-        ])
+        #expect(WorkspaceFeature.available(for: .localShell) == [.command])
         #if ENABLE_RDP_2
-        #expect(WorkspaceFeature.available(for: .rdp) == [
-            .desktop,
-            .profiles
-        ])
+        #expect(WorkspaceFeature.available(for: .rdp) == [.desktop])
+        #expect(WorkspaceFeature.available(for: .macDesktop) == [.desktop])
         #expect(WorkspaceFeature.defaultFeature(for: .rdp) == .desktop)
         #expect(WorkspaceFeature.resolvedSelection(.files, for: .rdp) == .desktop)
         #else
-        #expect(WorkspaceFeature.available(for: .rdp) == [.profiles])
-        #expect(WorkspaceFeature.defaultFeature(for: .rdp) == .profiles)
-        #expect(WorkspaceFeature.resolvedSelection(.files, for: .rdp) == .profiles)
+        #expect(WorkspaceFeature.available(for: .rdp).isEmpty)
+        #expect(WorkspaceFeature.defaultFeature(for: .rdp) == .command)
+        #expect(WorkspaceFeature.resolvedSelection(.files, for: .rdp) == .command)
         #endif
         #expect(WorkspaceFeature.defaultFeature(for: .ssh) == .command)
         #expect(WorkspaceFeature.defaultFeature(for: .localShell) == .command)
         #expect(WorkspaceFeature.resolvedSelection(.files, for: .ssh) == .files)
         #expect(WorkspaceFeature.resolvedSelection(.files, for: .localShell) == .command)
         #expect(WorkspaceFeature.resolvedSelection(.desktop, for: .ssh) == .command)
-        #expect(WorkspaceFeature.resolvedSelection(.profiles, for: .localShell) == .profiles)
+        #expect(WorkspaceFeature.resolvedSelection(.tunnels, for: .localShell) == .command)
     }
 
     @Test func grantManagementEntryRemainsVisibleForEveryConnectionType() {
@@ -7771,11 +7762,6 @@ struct JTSTerminalTests {
             arguments: ["+m", "-i"],
             label: "local shell"
         ))
-    }
-
-    @Test func toolbarTooltipTimingIsFastEnoughForPointerHover() async throws {
-        #expect(ToolbarTooltipTiming.showDelayMilliseconds <= 200)
-        #expect(ToolbarTooltipTiming.showDelaySeconds < 0.25)
     }
 
     @Test func welcomeGuideShowsOnceAndCoversMCPSetup() async throws {

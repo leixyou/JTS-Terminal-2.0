@@ -18,20 +18,6 @@ struct CompanionDevicesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Label(t("Companion devices", "Companion 设备"), systemImage: "desktopcomputer")
-                    .font(.headline)
-                Spacer()
-                if model.busy { ProgressView().controlSize(.small).accessibilityLabel(t("Working", "处理中")) }
-                Button(t("Reload", "重新读取"), systemImage: "arrow.clockwise") { Task { await model.refresh() } }
-                    .disabled(model.busy)
-                Button(t("Access code…", "接入码…"), systemImage: "link") { enrolling = true }
-                    .disabled(model.busy).accessibilityIdentifier("companion-access-code")
-                Button(t("Import device…", "导入设备…"), systemImage: "plus") { adding = true }
-                    .disabled(!model.loaded || model.snapshot == nil || model.busy)
-                    .accessibilityIdentifier("companion-add-device")
-            }.padding()
-            Divider()
             if let code = model.errorCode {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(t("The operation could not be verified. Reload local state or check the Windows approval and relay certificate.",
@@ -46,18 +32,19 @@ struct CompanionDevicesView: View {
                     detail.frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
-                VStack(spacing: 14) {
-                    Image(systemName: "desktopcomputer.and.arrow.down").font(.largeTitle).foregroundStyle(.secondary)
-                    Text(t("Independent Windows connections", "独立的 Windows 连接")).font(.title2)
+                ContentUnavailableView {
+                    Label(t("Independent Windows connections", "独立的 Windows 连接"), systemImage: "desktopcomputer.and.arrow.down")
+                } description: {
                     Text(t("Control does not need an open RDP desktop. Create a local identity, then verify a Windows device. Existing AI desktop control includes delegated pairing.",
                            "控制连接不依赖 RDP 窗口。先创建本机身份，再核对 Windows 设备；已有的 AI 桌面控制授权包含配对委托。"))
-                        .multilineTextAlignment(.center).frame(maxWidth: 480).foregroundStyle(.secondary)
+                } actions: {
                     if model.loaded && model.errorCode == nil {
                         Button(t("Create local identity…", "创建本机身份…")) { initializing = true }
                             .buttonStyle(.borderedProminent).disabled(model.busy)
                             .accessibilityIdentifier("companion-create-identity")
                     }
-                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             Divider()
             Text(t("Closing this window keeps \(model.connectedCount) control connection(s). Disconnect explicitly to close them. The same saved target permissions apply to independent MCP operations.",
@@ -65,6 +52,22 @@ struct CompanionDevicesView: View {
                 .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(12)
         }
         .frame(minWidth: 740, minHeight: 520)
+        .navigationTitle(t("Companion Devices", "Companion 设备"))
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if model.busy { ProgressView().controlSize(.small).accessibilityLabel(t("Working", "处理中")) }
+                Button(t("Reload", "重新读取"), systemImage: "arrow.clockwise") { Task { await model.refresh() } }
+                    .disabled(model.busy)
+                    .help(t("Reload", "重新读取"))
+                Button(t("Access Code…", "接入码…"), systemImage: "link") { enrolling = true }
+                    .disabled(model.busy).accessibilityIdentifier("companion-access-code")
+                    .help(t("Create an access code for a Windows device", "为 Windows 设备生成接入码"))
+                Button(t("Import Device…", "导入设备…"), systemImage: "plus") { adding = true }
+                    .disabled(!model.loaded || model.snapshot == nil || model.busy)
+                    .accessibilityIdentifier("companion-add-device")
+                    .help(t("Import Device…", "导入设备…"))
+            }
+        }
         .task { await model.refresh(); revocations.start(); try? await enrollment.refresh() }
         .onChange(of: model.selectedID) { _, _ in grantID = "" }
         .sheet(isPresented: $adding) { CompanionAddDeviceView(model: model, language: language) }
