@@ -6078,6 +6078,9 @@ enum TerminalRightClickPolicy {
 private struct TerminalPaneView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appLanguage) private var language
+    @Environment(\.colorScheme) private var systemColorScheme
+    @AppStorage(TerminalAppearanceSettings.fontSizeKey) private var terminalFontSize = TerminalAppearanceSettings.defaultFontSize
+    @AppStorage(TerminalAppearanceSettings.colorSchemeKey) private var terminalColorSchemeRawValue = TerminalColorScheme.dark.rawValue
     let session: RemoteSession
     let kind: TerminalWorkspaceState.Kind
     let mcpPaneName: String
@@ -6314,6 +6317,10 @@ private struct TerminalPaneView: View {
                     resizePTY(columns: columns, rows: rows)
                 },
                 onFocus: onFocus,
+                fontSize: TerminalAppearanceSettings.clampedFontSize(terminalFontSize),
+                usesDarkColors: TerminalAppearanceSettings
+                    .colorScheme(rawValue: terminalColorSchemeRawValue)
+                    .usesDarkColors(systemScheme: systemColorScheme),
                 surface: swiftTermSurface as? SwiftTermPersistentSurface
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -7490,6 +7497,8 @@ private struct SwiftTermPTYView: NSViewRepresentable {
     let sendRaw: (String) -> Void
     let resize: (Int, Int) -> Void
     let onFocus: () -> Void
+    let fontSize: Double
+    let usesDarkColors: Bool
     let surface: SwiftTermPersistentSurface?
 
     func makeCoordinator() -> Coordinator {
@@ -7505,6 +7514,7 @@ private struct SwiftTermPTYView: NSViewRepresentable {
             copyMenuTitle: copyMenuTitle,
             onFocus: onFocus
         )
+        terminalSurface.applyAppearance(fontSize: CGFloat(fontSize), usesDarkColors: usesDarkColors)
         terminalSurface.prepareForAttachment()
         terminalSurface.feed(transcript)
         return terminalView
@@ -7518,6 +7528,7 @@ private struct SwiftTermPTYView: NSViewRepresentable {
             copyMenuTitle: copyMenuTitle,
             onFocus: onFocus
         )
+        terminalSurface.applyAppearance(fontSize: CGFloat(fontSize), usesDarkColors: usesDarkColors)
         terminalSurface.prepareForAttachment()
         terminalSurface.feed(transcript)
 
@@ -7622,6 +7633,8 @@ private final class SwiftTermPersistentSurface: NSObject, TerminalViewDelegate {
     private var observedColumns = 0
     private var observedRows = 0
     private var shouldFollowOutput = true
+    private var appliedFontSize: CGFloat = 13
+    private var appliedDarkColors = true
 
     override init() {
         terminalView = StableSwiftTermTerminalView(
@@ -7647,6 +7660,25 @@ private final class SwiftTermPersistentSurface: NSObject, TerminalViewDelegate {
         self.resize = resize
         terminalView.copyMenuTitle = copyMenuTitle
         terminalView.onFocus = onFocus
+    }
+
+    /// Font size and colors from Settings > Terminal. Changes apply to the
+    /// running terminal; the grid is resized through the normal size path.
+    func applyAppearance(fontSize: CGFloat, usesDarkColors: Bool) {
+        if fontSize != appliedFontSize {
+            appliedFontSize = fontSize
+            terminalView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        }
+        if usesDarkColors != appliedDarkColors {
+            appliedDarkColors = usesDarkColors
+            terminalView.nativeBackgroundColor = usesDarkColors
+                ? TerminalCanvasView.backgroundColor
+                : NSColor(white: 1, alpha: 1)
+            terminalView.nativeForegroundColor = usesDarkColors
+                ? NSColor(white: 0.92, alpha: 1)
+                : NSColor(white: 0.1, alpha: 1)
+            terminalView.needsDisplay = true
+        }
     }
 
     func prepareForAttachment() {

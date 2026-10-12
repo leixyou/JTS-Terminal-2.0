@@ -20,6 +20,11 @@ struct AppSettingsView: View {
                     Label(language.localized("General", "通用"), systemImage: "gearshape")
                 }
 
+            TerminalSettingsView()
+                .tabItem {
+                    Label(language.localized("Terminal", "终端"), systemImage: "terminal")
+                }
+
             MCPSettingsView()
                 .tabItem {
                     Label("MCP", systemImage: "point.3.connected.trianglepath.dotted")
