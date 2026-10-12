@@ -360,12 +360,16 @@ struct ContentView: View {
             showTunnels: {
                 selectWorkspaceFeature(.tunnels)
             },
-            showCredentials: {
-                selectWorkspaceFeature(.credentials)
+            importServers: importServers,
+            exportSelectedServer: {
+                if let selectedSession {
+                    ServerProfileTransfer.export([selectedSession], language: appLanguage)
+                }
             },
-            showProfiles: {
-                selectWorkspaceFeature(.profiles)
+            exportAllServers: {
+                ServerProfileTransfer.export(sessions, language: appLanguage)
             },
+            hasServers: !sessions.isEmpty,
             availableWorkspaceFeatures: selectedSession.map {
                 WorkspaceFeature.available(for: $0.connectionType)
             } ?? [],
@@ -379,6 +383,14 @@ struct ContentView: View {
 
     private func addSession() {
         addSession(folder: "")
+    }
+
+    private func importServers() {
+        let imported = ServerProfileTransfer.importServers(into: modelContext, language: appLanguage)
+        if let first = imported.first {
+            sidebarSearchText = ""
+            selectedSessionID = first.persistentModelID
+        }
     }
 
     private func addSession(folder: String) {
@@ -969,8 +981,8 @@ struct WelcomeGuideItem: Identifiable, Equatable {
                 symbol: "rectangle.3.group",
                 title: language.localized("Use the matching workspace", "使用匹配的工作区"),
                 message: language.localized(
-                    "SSH provides Terminal, Files, Tunnels, Password, and profile import/export. Local Shell provides Terminal and profile import/export. Windows RDP provides Desktop and profile import/export.",
-                    "SSH 提供终端、文件、隧道、密码和配置导入导出；本地 Shell 提供终端和配置导入导出；Windows RDP 提供桌面和配置导入导出。"
+                    "SSH provides Terminal, Files and Tunnels. Local Shell provides Terminal. Windows RDP provides Desktop. Passwords live in Server Properties; File > Import Servers and Export Servers move profiles without passwords.",
+                    "SSH 提供终端、文件和隧道；本地 Shell 提供终端；Windows RDP 提供桌面。密码在服务器属性中管理；用“文件 > 导入服务器 / 导出服务器”迁移配置，不含密码。"
                 )
             ),
             WelcomeGuideItem(
@@ -1398,8 +1410,6 @@ enum WorkspaceFeature: String, CaseIterable, Identifiable {
     case command
     case files
     case tunnels
-    case credentials
-    case profiles
 
     var id: String { rawValue }
 
@@ -1407,7 +1417,7 @@ enum WorkspaceFeature: String, CaseIterable, Identifiable {
         switch self {
         case .desktop:
             return AppReleasePolicy.includesNativeRDP
-        case .command, .files, .tunnels, .credentials, .profiles:
+        case .command, .files, .tunnels:
             return true
         }
     }
@@ -1420,19 +1430,19 @@ enum WorkspaceFeature: String, CaseIterable, Identifiable {
         let supportedFeatures: [WorkspaceFeature]
         switch connectionType {
         case .ssh:
-            supportedFeatures = [.command, .files, .tunnels, .credentials, .profiles]
+            supportedFeatures = [.command, .files, .tunnels]
         case .localShell:
-            supportedFeatures = [.command, .profiles]
-        case .macDesktop:
-            supportedFeatures = [.desktop, .profiles]
-        case .rdp:
-            supportedFeatures = [.desktop, .profiles]
+            supportedFeatures = [.command]
+        case .macDesktop, .rdp:
+            supportedFeatures = [.desktop]
         }
         return supportedFeatures.filter(\.isIncludedInCurrentRelease)
     }
 
     static func defaultFeature(for connectionType: RemoteConnectionType) -> WorkspaceFeature {
-        available(for: connectionType).first ?? .profiles
+        // Builds without the desktop workspace never keep RDP or Mac Desktop
+        // profiles (they load as SSH), so Terminal is a safe last resort.
+        available(for: connectionType).first ?? .command
     }
 
     static func resolvedSelection(
@@ -1462,10 +1472,6 @@ enum WorkspaceFeature: String, CaseIterable, Identifiable {
             return language.localized("Files", "文件")
         case .tunnels:
             return language.localized("Tunnels", "隧道")
-        case .credentials:
-            return language.localized("Password", "密码")
-        case .profiles:
-            return language.localized("Import / Export", "导入导出")
         }
     }
 
@@ -1510,16 +1516,6 @@ enum WorkspaceFeature: String, CaseIterable, Identifiable {
                 "Manage local, remote, and SOCKS SSH tunnels.",
                 "管理 SSH 本地、远程和 SOCKS 隧道"
             )
-        case .credentials:
-            return language.localized(
-                "Save and check encrypted local SSH passwords.",
-                "保存和检查本地加密 SSH 密码"
-            )
-        case .profiles:
-            return language.localized(
-                "Move session profiles without exporting keys or passwords.",
-                "迁移会话配置，不导出密钥或密码"
-            )
         }
     }
 
@@ -1533,10 +1529,6 @@ enum WorkspaceFeature: String, CaseIterable, Identifiable {
             return "folder"
         case .tunnels:
             return "point.topleft.down.curvedto.point.bottomright.up"
-        case .credentials:
-            return "key"
-        case .profiles:
-            return "square.and.arrow.up.on.square"
         }
     }
 }
@@ -1649,33 +1641,23 @@ private struct RemoteWorkspace: View {
         )
     }
 
+    /// Terminal, Files and Tunnels run edge to edge under the toolbar with
+    /// their own bars; the desktop views keep a small margin.
     @ViewBuilder
     private var selectedFeatureContainer: some View {
         switch effectiveSelectedFeature {
-        case .desktop, .command:
+        case .desktop:
             selectedFeatureView
                 .padding(8)
-                .controlSize(.small)
-        case .files:
+        case .command, .files, .tunnels:
             selectedFeatureView
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .controlSize(.small)
-        case .tunnels, .credentials, .profiles:
-            ScrollView {
-                selectedFeatureView
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 18)
-                    .controlSize(.small)
-            }
         }
     }
 
     @ViewBuilder
     private var selectedFeatureView: some View {
         let feature = effectiveSelectedFeature
-        VStack(alignment: .leading, spacing: feature == .desktop || feature == .command || feature == .files ? 0 : 14) {
+        VStack(alignment: .leading, spacing: 0) {
             switch feature {
             case .desktop:
                 if session.connectionType == .macDesktop {
@@ -1752,37 +1734,15 @@ private struct RemoteWorkspace: View {
                         connectionType: session.connectionType
                     )
                 }
-            case .credentials:
-                if session.connectionType == .ssh {
-                    PasswordPanel(session: session)
-                } else {
-                    UnsupportedConnectionFeaturePrompt(
-                        feature: feature,
-                        connectionType: session.connectionType
-                    )
-                }
-            case .profiles:
-                ProfilePortabilityPanel(
-                    session: session,
-                    sessions: sessions,
-                    importProfiles: importProfiles
-                )
             }
         }
-        .frame(
-            maxHeight: feature == .desktop || feature == .command || feature == .files ? .infinity : nil,
-            alignment: .topLeading
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func reconcileSelectedFeature() {
         let resolved = effectiveSelectedFeature
         guard selectedFeature != resolved else { return }
         selectedFeature = resolved
-    }
-
-    private func importProfiles(_ profiles: [RemoteSessionProfile]) {
-        SessionProfileImporter.insert(profiles, into: modelContext)
     }
 
     private func shouldAutoStartSSH(for session: RemoteSession) -> Bool {
@@ -3892,7 +3852,7 @@ final class RemoteFilesWorkspaceState: ObservableObject {
     @Published var renameTargetName = ""
     @Published var errorMessage: String?
     @Published var operationMessage = "Ready."
-    @Published var sortMode = RemoteFileSortMode.name
+    @Published var sortOrder = [KeyPathComparator(\RemoteFileEntry.name)]
     @Published var isRunning = false
     @Published var editDraft: RemoteEditDraft?
     @Published private(set) var loadedConnectionKey: String?
@@ -3995,210 +3955,84 @@ private struct RemoteFilesPanel: View {
     private var selectedEntry: RemoteFileEntry? {
         workspace.entries.first { $0.id == workspace.selectedEntryID }
     }
+    /// Folders first, then the table's sort columns, then name.
     private var sortedEntries: [RemoteFileEntry] {
         workspace.entries.sorted { left, right in
             if left.isDirectory != right.isDirectory {
-                return left.isDirectory && !right.isDirectory
+                return left.isDirectory
             }
-
-            switch workspace.sortMode {
-            case .name:
-                return left.name.localizedStandardCompare(right.name) == .orderedAscending
-            case .type:
-                if left.typeLabel != right.typeLabel {
-                    return left.typeLabel < right.typeLabel
+            for comparator in workspace.sortOrder {
+                switch comparator.compare(left, right) {
+                case .orderedAscending:
+                    return true
+                case .orderedDescending:
+                    return false
+                case .orderedSame:
+                    continue
                 }
-                return left.name.localizedStandardCompare(right.name) == .orderedAscending
-            case .size:
-                let leftSize = left.byteSize ?? -1
-                let rightSize = right.byteSize ?? -1
-                if leftSize != rightSize {
-                    return leftSize < rightSize
-                }
-                return left.name.localizedStandardCompare(right.name) == .orderedAscending
-            case .modified:
-                if left.modified != right.modified {
-                    return left.modified > right.modified
-                }
-                return left.name.localizedStandardCompare(right.name) == .orderedAscending
             }
+            return left.name.localizedStandardCompare(right.name) == .orderedAscending
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Button {
-                    goToParent()
-                } label: {
-                    Label(language.localized("Parent", "上级"), systemImage: "chevron.up")
-                }
-                .disabled(!session.isConnectable || workspace.isRunning)
+        VStack(spacing: 0) {
+            filesToolbar
+            Divider()
 
-                Button {
-                    session.remotePath = "~"
-                    listDirectory()
-                } label: {
-                    Label(language.localized("Home", "主目录"), systemImage: "house")
-                }
-                .disabled(!session.isConnectable || workspace.isRunning)
-
-                TextField(language.localized("Remote path", "远程路径"), text: $session.remotePath)
-                    .font(.system(.body, design: .monospaced))
-                    .onSubmit {
-                        listDirectory()
-                    }
-                    .accessibilityIdentifier("remote-files-path-field")
-
-                Button(language.localized("Go", "前往")) {
-                    listDirectory()
-                }
-                .disabled(!session.isConnectable || workspace.isRunning)
-
-                Picker(language.localized("Sort", "排序"), selection: $workspace.sortMode) {
-                    ForEach(RemoteFileSortMode.allCases) { mode in
-                        Text(mode.title(language: language)).tag(mode)
+            Table(sortedEntries, selection: $workspace.selectedEntryID, sortOrder: $workspace.sortOrder) {
+                TableColumn(RemoteFileSortMode.name.title(language: language), value: \.name) { entry in
+                    Label {
+                        Text(entry.displayName)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    } icon: {
+                        Image(systemName: iconName(for: entry))
+                            .foregroundStyle(iconColor(for: entry))
                     }
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .fixedSize()
-                .help(language.localized("Sort", "排序"))
-
-                Button {
-                    listDirectory()
-                } label: {
-                    Label(
-                        workspace.isRunning
-                            ? language.localized("Loading", "加载中")
-                            : language.localized("Refresh", "刷新"),
-                        systemImage: "arrow.clockwise"
-                    )
-                }
-                .disabled(!session.isConnectable || workspace.isRunning)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(.bar, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            HStack(spacing: 8) {
-                Button {
-                    uploadIntoCurrentDirectory()
-                } label: {
-                    Label(language.localized("Upload", "上传"), systemImage: "square.and.arrow.up")
-                }
-                .disabled(!session.isConnectable || workspace.isRunning)
-
-                Button {
-                    downloadSelected()
-                } label: {
-                    Label(language.localized("Download", "下载"), systemImage: "square.and.arrow.down")
-                }
-                .disabled(selectedEntry == nil || workspace.isRunning)
-
-                Button {
-                    openSelectedForEditing()
-                } label: {
-                    Label(language.localized("Edit", "编辑"), systemImage: "pencil")
-                }
-                .disabled(selectedEntry?.isRegularFile != true || workspace.isRunning)
-
-                Menu {
-                    Button {
-                        workspace.newFolderName = ""
-                        isCreatingFolder = true
-                    } label: {
-                        Label(language.localized("New Folder…", "新建文件夹…"), systemImage: "folder.badge.plus")
-                    }
-                    .disabled(!session.isConnectable || workspace.isRunning)
-
-                    Button {
-                        beginRename(selectedEntry)
-                    } label: {
-                        Label(language.localized("Rename…", "重命名…"), systemImage: "pencil")
-                    }
-                    .disabled(selectedEntry == nil || workspace.isRunning)
-
-                    Button {
-                        uploadEditedCopy()
-                    } label: {
-                        Label(language.localized("Sync Edited Copy", "同步编辑副本"), systemImage: "arrow.up.doc")
-                    }
-                    .disabled(workspace.editDraft == nil || workspace.isRunning)
-
-                    Button {
-                        revealEditedCopy()
-                    } label: {
-                        Label(language.localized("Reveal Local Edit Copy", "在访达中显示编辑副本"), systemImage: "folder")
-                    }
-                    .disabled(workspace.editDraft == nil)
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        entryPendingDeletion = selectedEntry
-                    } label: {
-                        Label(language.localized("Delete…", "删除…"), systemImage: "trash")
-                    }
-                    .disabled(selectedEntry == nil || workspace.isRunning)
-                } label: {
-                    Label(language.localized("More", "更多"), systemImage: "ellipsis.circle")
-                }
-                .fixedSize()
-
-                Spacer(minLength: 8)
-
-                Text(statusText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(statusText)
-            }
-            .padding(.horizontal, 2)
-
-            ZStack {
-                Table(sortedEntries, selection: $workspace.selectedEntryID) {
-                TableColumn(language.localized("Name", "名称")) { entry in
-	                    HStack {
-	                        Image(systemName: iconName(for: entry))
-	                            .foregroundStyle(iconColor(for: entry))
-	                        Text(entry.displayName)
-	                            .lineLimit(1)
-	                    }
-	                    .contentShape(Rectangle())
-	                    .onTapGesture(count: 2) {
-	                        open(entry)
-	                    }
-	                    .contextMenu {
-	                        fileContextMenu(for: entry)
-	                    }
-	                }
-                TableColumn(language.localized("Type", "类型"), value: \.typeLabel)
-                    .width(80)
-                TableColumn(language.localized("Size", "大小")) { entry in
-                    Text(entry.isDirectory ? "--" : entry.formattedSize)
+                .width(min: 180, ideal: 280)
+                TableColumn(RemoteFileSortMode.type.title(language: language), value: \.typeLabel) { entry in
+                    Text(typeTitle(for: entry))
                         .foregroundStyle(.secondary)
                 }
-                .width(90)
-                TableColumn(language.localized("Owner", "所有者"), value: \.owner)
-                    .width(90)
-                TableColumn(language.localized("Permissions", "权限"), value: \.permissions)
-                    .width(115)
-                TableColumn(language.localized("Modified", "修改时间"), value: \.modified)
-                    .width(min: 150, ideal: 180)
+                .width(min: 60, ideal: 80)
+                TableColumn(RemoteFileSortMode.size.title(language: language), value: \.sortableByteSize) { entry in
+                    Text(entry.isDirectory ? "--" : entry.formattedSize)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
                 }
-                .contextMenu {
-                    if let selectedEntry {
-                        fileContextMenu(for: selectedEntry)
-                    }
+                .width(min: 60, ideal: 90)
+                TableColumn(language.localized("Owner", "所有者"), value: \.owner) { entry in
+                    Text(entry.owner)
+                        .foregroundStyle(.secondary)
                 }
-
-                if workspace.isRunning {
+                .width(min: 60, ideal: 90)
+                TableColumn(language.localized("Permissions", "权限"), value: \.permissions) { entry in
+                    Text(entry.permissions)
+                        .monospaced()
+                        .foregroundStyle(.secondary)
+                }
+                .width(min: 90, ideal: 115)
+                TableColumn(RemoteFileSortMode.modified.title(language: language), value: \.modified) { entry in
+                    Text(entry.modified)
+                        .foregroundStyle(.secondary)
+                }
+                .width(min: 130, ideal: 170)
+            }
+            .contextMenu(forSelectionType: RemoteFileEntry.ID.self) { identifiers in
+                if let entry = entry(for: identifiers) {
+                    fileContextMenu(for: entry)
+                }
+            } primaryAction: { identifiers in
+                if let entry = entry(for: identifiers) {
+                    open(entry)
+                }
+            }
+            .overlay {
+                if workspace.isRunning && workspace.entries.isEmpty {
                     ProgressView(workspace.operationMessage)
-                        .padding(18)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                } else if workspace.entries.isEmpty {
+                } else if !workspace.isRunning && workspace.entries.isEmpty {
                     ContentUnavailableView(
                         emptyDirectoryTitle,
                         systemImage: workspace.errorMessage == nil ? "folder" : "exclamationmark.triangle",
@@ -4210,58 +4044,10 @@ private struct RemoteFilesPanel: View {
 
             transferQueueView
 
-            HStack {
-                if workspace.isRunning {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(workspace.operationMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let errorMessage = workspace.errorMessage {
-                    HStack(spacing: 8) {
-                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
-
-                        Button {
-                            openServerProperties()
-                        } label: {
-                            Label(language.localized("Server Properties", "服务器属性"), systemImage: "info.circle")
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                } else if let result = workspace.result, !result.succeeded {
-                    Text(RemoteSFTPTransport.failureMessage(for: result))
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
-                } else {
-                    Text(statusText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-
-                Spacer()
-
-                if let editDraft = workspace.editDraft {
-                    Text(language.localized("Editing: \(editDraft.remoteName)", "正在编辑：\(editDraft.remoteName)"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .help(editDraft.summary)
-                }
-
-                if let selectedEntry {
-                    Text("\(selectedEntry.typeLabel) · \(selectedEntry.permissions)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Divider()
+            statusBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .controlSize(.small)
         .onChange(of: workspace.selectedEntryID) { _, _ in
             workspace.renameTargetName = selectedEntry?.name ?? ""
         }
@@ -4334,52 +4120,225 @@ private struct RemoteFilesPanel: View {
         isRenaming = true
     }
 
-    @ViewBuilder
-    private var transferQueueView: some View {
-        if !sessionTransferHistory.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Button {
-                        isTransferHistoryPresented.toggle()
-                    } label: {
-                        Label(language.localized("Transfer Queue", "传输队列"), systemImage: "arrow.up.arrow.down.circle")
-                            .font(.caption.weight(.semibold))
-	                    }
-	                    .buttonStyle(.plain)
+    /// Navigation, the path bar and file actions in one bar, like Finder's
+    /// toolbar: icon buttons with tooltips and a More menu.
+    private var filesToolbar: some View {
+        HStack(spacing: 8) {
+            ControlGroup {
+                Button {
+                    goToParent()
+                } label: {
+                    Label(language.localized("Enclosing Folder", "上级文件夹"), systemImage: "chevron.up")
+                }
+                .help(language.localized("Enclosing Folder", "上级文件夹"))
 
-	                    Spacer()
+                Button {
+                    navigate(to: "~")
+                } label: {
+                    Label(language.localized("Home", "主目录"), systemImage: "house")
+                }
+                .help(language.localized("Home", "主目录"))
+            }
+            .fixedSize()
+            .disabled(!session.isConnectable || workspace.isRunning)
 
-                    Button {
-                        isTransferHistoryPresented.toggle()
-                    } label: {
-                        Text(transferHistorySummary)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-	                    }
-	                    .buttonStyle(.plain)
-	                }
-	                .popover(isPresented: $isTransferHistoryPresented, arrowEdge: .bottom) {
-	                    transferHistoryPopover
-	                }
+            RemotePathBar(
+                path: $session.remotePath,
+                isEnabled: session.isConnectable && !workspace.isRunning,
+                navigate: navigate(to:)
+            )
 
-	                if visibleTransferQueueTasks.isEmpty {
-                    Text(language.localized(
-                        "No active transfers. Click Transfer Queue to view this server's transfer history.",
-                        "当前没有进行中的传输。点击“传输队列”查看此服务器的传输记录。"
-                    ))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                } else {
-                    ForEach(visibleTransferQueueTasks) { task in
-                        transferQueueRow(task)
-                    }
+            Button {
+                listDirectory()
+            } label: {
+                Label(language.localized("Refresh", "刷新"), systemImage: "arrow.clockwise")
+            }
+            .help(language.localized("Refresh", "刷新"))
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(!session.isConnectable || workspace.isRunning)
+
+            Divider()
+                .frame(height: 18)
+
+            Button {
+                uploadIntoCurrentDirectory()
+            } label: {
+                Label(language.localized("Upload…", "上传…"), systemImage: "square.and.arrow.up")
+            }
+            .help(language.localized("Upload files into this folder", "上传文件到此文件夹"))
+            .disabled(!session.isConnectable || workspace.isRunning)
+
+            Button {
+                downloadSelected()
+            } label: {
+                Label(language.localized("Download…", "下载…"), systemImage: "square.and.arrow.down")
+            }
+            .help(language.localized("Download the selected item", "下载所选项目"))
+            .disabled(selectedEntry == nil || workspace.isRunning)
+
+            Button {
+                openSelectedForEditing()
+            } label: {
+                Label(language.localized("Edit", "编辑"), systemImage: "pencil")
+            }
+            .help(language.localized("Open an editable local copy", "打开可编辑的本地副本"))
+            .disabled(selectedEntry?.isRegularFile != true || workspace.isRunning)
+
+            Menu {
+                Button {
+                    workspace.newFolderName = ""
+                    isCreatingFolder = true
+                } label: {
+                    Label(language.localized("New Folder…", "新建文件夹…"), systemImage: "folder.badge.plus")
+                }
+                .disabled(!session.isConnectable || workspace.isRunning)
+
+                Button {
+                    beginRename(selectedEntry)
+                } label: {
+                    Label(language.localized("Rename…", "重命名…"), systemImage: "pencil")
+                }
+                .disabled(selectedEntry == nil || workspace.isRunning)
+
+                Divider()
+
+                Button {
+                    uploadEditedCopy()
+                } label: {
+                    Label(language.localized("Sync Edited Copy", "同步编辑副本"), systemImage: "arrow.up.doc")
+                }
+                .disabled(workspace.editDraft == nil || workspace.isRunning)
+
+                Button {
+                    revealEditedCopy()
+                } label: {
+                    Label(language.localized("Reveal Local Edit Copy", "在访达中显示编辑副本"), systemImage: "folder")
+                }
+                .disabled(workspace.editDraft == nil)
+
+                Divider()
+
+                Button(role: .destructive) {
+                    entryPendingDeletion = selectedEntry
+                } label: {
+                    Label(language.localized("Delete…", "删除…"), systemImage: "trash")
+                }
+                .disabled(selectedEntry == nil || workspace.isRunning)
+            } label: {
+                Label(language.localized("More", "更多"), systemImage: "ellipsis.circle")
+            }
+            .menuIndicator(.hidden)
+            .help(language.localized("More", "更多"))
+            .fixedSize()
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .menuStyle(.button)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.bar)
+    }
+
+    /// Finder-style status bar: progress or errors first, otherwise the
+    /// folder's item count; the edit copy and transfer history on the right.
+    private var statusBar: some View {
+        HStack(spacing: 10) {
+            if workspace.isRunning {
+                ProgressView()
+                    .controlSize(.small)
+                Text(workspace.operationMessage)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else if let errorMessage = workspace.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+                    .help(errorMessage)
+
+                Button(language.localized("Server Properties", "服务器属性")) {
+                    openServerProperties()
+                }
+                .controlSize(.small)
+            } else if let result = workspace.result, !result.succeeded {
+                Text(RemoteSFTPTransport.failureMessage(for: result))
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            } else {
+                Text(statusText)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(statusText)
+            }
+
+            Spacer(minLength: 8)
+
+            if let editDraft = workspace.editDraft {
+                Label(
+                    language.localized("Editing \(editDraft.remoteName)", "正在编辑 \(editDraft.remoteName)"),
+                    systemImage: "pencil"
+                )
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .help(editDraft.summary)
+            }
+
+            if !sessionTransferHistory.isEmpty {
+                Button {
+                    isTransferHistoryPresented.toggle()
+                } label: {
+                    Label(transferHistorySummary, systemImage: "arrow.up.arrow.down.circle")
+                }
+                .buttonStyle(.borderless)
+                .help(language.localized("Transfer History", "传输记录"))
+                .popover(isPresented: $isTransferHistoryPresented, arrowEdge: .top) {
+                    transferHistoryPopover
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
-            .background(.bar, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .background(.bar)
+    }
+
+    private func navigate(to path: String) {
+        session.remotePath = path
+        listDirectory()
+    }
+
+    private func entry(for identifiers: Set<RemoteFileEntry.ID>) -> RemoteFileEntry? {
+        guard identifiers.count == 1, let identifier = identifiers.first else { return nil }
+        return workspace.entries.first { $0.id == identifier }
+    }
+
+    private func typeTitle(for entry: RemoteFileEntry) -> String {
+        switch entry.kind {
+        case .directory:
+            return language.localized("Folder", "文件夹")
+        case .file:
+            return language.localized("File", "文件")
+        case .symlink:
+            return language.localized("Link", "链接")
+        case .other:
+            return language.localized("Other", "其他")
+        }
+    }
+
+    /// Active transfers, listed above the status bar only while they run.
+    @ViewBuilder
+    private var transferQueueView: some View {
+        if !visibleTransferQueueTasks.isEmpty {
+            Divider()
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(visibleTransferQueueTasks) { task in
+                    transferQueueRow(task)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         }
     }
 
@@ -5244,6 +5203,8 @@ private struct RemoteFilesPanel: View {
     }
 }
 
+/// SSH tunnels for one server: saved tunnels in a table, the selected or new
+/// tunnel in a form, and the running tunnel's state with Start/Stop.
 private struct TunnelPanel: View {
     @Environment(\.appLanguage) private var language
     @Environment(\.modelContext) private var modelContext
@@ -5262,161 +5223,14 @@ private struct TunnelPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                SectionTitle(language.localized("SSH Tunnels", "SSH 隧道"))
-                Spacer()
-                if manager.isRunning || manager.isReconnectScheduled {
-                    Button(role: .destructive) {
-                        manager.stop()
-                    } label: {
-                        Label(
-                            manager.isReconnectScheduled
-                                ? language.localized("Cancel Reconnect", "取消重连")
-                                : language.localized("Stop", "停止"),
-                            systemImage: "stop.fill"
-                        )
-                    }
-                } else {
-                    Button {
-                        manager.start(session: session, configuration: configuration)
-                    } label: {
-                        Label(language.localized("Start Tunnel", "启动隧道"), systemImage: "play.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!session.isConnectable || validationMessage != nil)
-                }
-            }
-
-            if !sessionTunnels.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(language.localized("Saved tunnel profiles", "已保存的隧道配置"))
-                        .font(.headline)
-
-                    ForEach(sessionTunnels) { tunnel in
-                        HStack {
-                            Button {
-                                load(tunnel)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(tunnel.name)
-                                        .font(.headline)
-                                    Text(tunnel.configuration.summary)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    if tunnel.configuration.autoReconnect {
-                                        Label(language.localized("Auto reconnect", "自动重连"), systemImage: "arrow.clockwise")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-
-                            if selectedSavedTunnelID == tunnel.persistentModelID {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.teal)
-                            }
-
-                            Button(role: .destructive) {
-                                delete(tunnel)
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                            .help(language.localized("Delete saved tunnel profile", "删除已保存的隧道配置"))
-                            .accessibilityLabel(language.localized("Delete saved tunnel profile", "删除已保存的隧道配置"))
-                        }
-                        .padding(10)
-                        .background(
-                            selectedSavedTunnelID == tunnel.persistentModelID ? .teal.opacity(0.12) : .black.opacity(0.04),
-                            in: RoundedRectangle(cornerRadius: 12)
-                        )
-                    }
-                }
-            }
-
-            HStack {
-                TextField(language.localized("Name", "名称"), text: $configuration.name)
-                Picker(language.localized("Kind", "类型"), selection: $configuration.kind) {
-                    ForEach(SSHTunnelKind.allCases) { kind in
-                        Text(tunnelKindTitle(kind)).tag(kind)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-            }
-
-            HStack {
-                TextField(language.localized("Bind address", "绑定地址"), text: $configuration.bindAddress)
-                TextField(language.localized("Local port", "本地端口"), value: $configuration.localPort, format: .number.grouping(.never))
-                    .frame(width: 110)
-            }
-
-            if configuration.kind != .dynamic {
-                HStack {
-                    TextField(language.localized("Destination host", "目标主机"), text: $configuration.destinationHost)
-                    TextField(language.localized("Destination port", "目标端口"), value: $configuration.destinationPort, format: .number.grouping(.never))
-                        .frame(width: 130)
-                }
-            }
-
-            Toggle(language.localized("Auto reconnect if the tunnel drops", "隧道断开时自动重连"), isOn: $configuration.autoReconnect)
-                .font(.callout)
-
-            if let validationMessage {
-                Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            } else {
-                Label(
-                    configuration.supportsLocalReadinessCheck
-                        ? language.localized(
-                            "Readiness check will probe \(configuration.localEndpointSummary) after startup.",
-                            "启动后会探测 \(configuration.localEndpointSummary) 以确认隧道就绪。"
-                        )
-                        : language.localized(
-                            "Remote tunnels start on the server side and cannot be probed locally.",
-                            "远程隧道在服务器端启动，无法在本地探测。"
-                        ),
-                    systemImage: "checkmark.shield.fill"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            HStack {
-                Button {
-                    saveCurrent()
-                } label: {
-                    Label(
-                        selectedSavedTunnelID == nil
-                            ? language.localized("Save Tunnel Profile", "保存隧道配置")
-                            : language.localized("Update Saved Profile", "更新已保存配置"),
-                        systemImage: "tray.and.arrow.down.fill"
-                    )
-                }
-                .buttonStyle(.bordered)
-                .disabled(!session.isConnectable || validationMessage != nil)
-
-                Button {
-                    selectedSavedTunnelID = nil
-                    configuration = SSHTunnelConfiguration()
-                } label: {
-                    Label(language.localized("New Profile", "新建配置"), systemImage: "plus")
-                }
-                .buttonStyle(.bordered)
-            }
-
-            Label(manager.lastMessage, systemImage: manager.isRunning ? "circle.fill" : "circle.dashed")
-                .font(.system(.callout, design: .monospaced))
-                .foregroundStyle(manager.isRunning ? Color.green : (manager.isReconnectScheduled ? Color.orange : Color.secondary))
-                .textSelection(.enabled)
+        VStack(spacing: 0) {
+            savedTunnelsTable
+            savedTunnelsBar
+            Divider()
+            editor
+            Divider()
+            statusBar
         }
-        .padding(20)
-        .panelBackground()
         .onAppear {
             if let activeConfiguration = manager.activeConfiguration {
                 configuration = activeConfiguration
@@ -5424,9 +5238,229 @@ private struct TunnelPanel: View {
         }
     }
 
+    private var savedTunnelsTable: some View {
+        Table(sessionTunnels, selection: tableSelection) {
+            TableColumn(language.localized("Name", "名称")) { tunnel in
+                Text(tunnel.name)
+                    .lineLimit(1)
+            }
+            TableColumn(language.localized("Type", "类型")) { tunnel in
+                Text(tunnelKindTitle(tunnel.configuration.kind))
+            }
+            .width(min: 70, ideal: 110)
+            TableColumn(language.localized("Forwarding", "转发")) { tunnel in
+                Text(tunnel.configuration.summary)
+                    .monospaced()
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 160, ideal: 260)
+            TableColumn(language.localized("Auto Reconnect", "自动重连")) { tunnel in
+                if tunnel.configuration.autoReconnect {
+                    Image(systemName: "checkmark")
+                        .accessibilityLabel(language.localized("On", "开"))
+                }
+            }
+            .width(min: 60, ideal: 90)
+        }
+        .contextMenu(forSelectionType: PersistentIdentifier.self) { identifiers in
+            if let tunnel = tunnel(for: identifiers) {
+                Button(language.localized("Delete Saved Tunnel", "删除已保存的隧道"), role: .destructive) {
+                    delete(tunnel)
+                }
+            }
+        }
+        .onDeleteCommand {
+            if let selectedTunnel {
+                delete(selectedTunnel)
+            }
+        }
+        .overlay {
+            if sessionTunnels.isEmpty {
+                ContentUnavailableView {
+                    Label(language.localized("No Saved Tunnels", "没有已保存的隧道"), systemImage: WorkspaceFeature.tunnels.symbol)
+                } description: {
+                    Text(language.localized(
+                        "Fill in a tunnel below, then start it or save it for later.",
+                        "在下方填写隧道，然后启动或保存以便以后使用。"
+                    ))
+                }
+            }
+        }
+        .frame(minHeight: 120, idealHeight: 170, maxHeight: 240)
+        .accessibilityIdentifier("tunnel-saved-table")
+    }
+
+    private var savedTunnelsBar: some View {
+        HStack(spacing: 2) {
+            Button(action: startNewTunnel) {
+                Image(systemName: "plus")
+                    .frame(width: 22, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .help(language.localized("New Tunnel", "新建隧道"))
+            .accessibilityLabel(language.localized("New Tunnel", "新建隧道"))
+
+            Button {
+                if let selectedTunnel {
+                    delete(selectedTunnel)
+                }
+            } label: {
+                Image(systemName: "minus")
+                    .frame(width: 22, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .disabled(selectedTunnel == nil)
+            .help(language.localized("Delete Saved Tunnel", "删除已保存的隧道"))
+            .accessibilityLabel(language.localized("Delete Saved Tunnel", "删除已保存的隧道"))
+
+            Spacer()
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+
+    private var editor: some View {
+        Form {
+            Section {
+                TextField(text: $configuration.name, prompt: Text("Postgres Tunnel")) {
+                    Text(language.localized("Name", "名称"))
+                }
+
+                Picker(language.localized("Type", "类型"), selection: $configuration.kind) {
+                    ForEach(SSHTunnelKind.allCases) { kind in
+                        Text(tunnelKindTitle(kind)).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                TextField(text: $configuration.bindAddress, prompt: Text("127.0.0.1")) {
+                    Text(language.localized("Bind address", "绑定地址"))
+                }
+
+                TextField(value: $configuration.localPort, format: .number.grouping(.never)) {
+                    Text(language.localized("Local port", "本地端口"))
+                }
+
+                if configuration.kind != .dynamic {
+                    TextField(text: $configuration.destinationHost, prompt: Text("127.0.0.1")) {
+                        Text(language.localized("Destination host", "目标主机"))
+                    }
+
+                    TextField(value: $configuration.destinationPort, format: .number.grouping(.never)) {
+                        Text(language.localized("Destination port", "目标端口"))
+                    }
+                }
+
+                Toggle(language.localized("Reconnect if the tunnel drops", "隧道断开时自动重连"), isOn: $configuration.autoReconnect)
+            } header: {
+                Text(selectedSavedTunnelID == nil
+                    ? language.localized("New Tunnel", "新建隧道")
+                    : language.localized("Saved Tunnel", "已保存的隧道"))
+            } footer: {
+                if let validationMessage {
+                    Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                } else {
+                    Text(configuration.supportsLocalReadinessCheck
+                        ? language.localized(
+                            "After starting, JTS Terminal checks that \(configuration.localEndpointSummary) accepts connections.",
+                            "启动后，JTS Terminal 会检查 \(configuration.localEndpointSummary) 是否可以连接。"
+                        )
+                        : language.localized(
+                            "Remote tunnels listen on the server and cannot be checked from this Mac.",
+                            "远程隧道在服务器上监听，无法从这台 Mac 检查。"
+                        ))
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var statusBar: some View {
+        HStack(spacing: 10) {
+            Label {
+                Text(manager.lastMessage)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            } icon: {
+                Image(systemName: manager.isRunning ? "circle.fill" : "circle.dashed")
+                    .foregroundStyle(statusColor)
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+
+            Spacer(minLength: 12)
+
+            Button(selectedSavedTunnelID == nil
+                ? language.localized("Save Tunnel", "保存隧道")
+                : language.localized("Save Changes", "保存更改")
+            ) {
+                saveCurrent()
+            }
+            .disabled(!session.isConnectable || validationMessage != nil)
+
+            if manager.isRunning || manager.isReconnectScheduled {
+                Button(manager.isReconnectScheduled
+                    ? language.localized("Cancel Reconnect", "取消重连")
+                    : language.localized("Stop", "停止")
+                ) {
+                    manager.stop()
+                }
+            } else {
+                Button(language.localized("Start Tunnel", "启动隧道")) {
+                    manager.start(session: session, configuration: configuration)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!session.isConnectable || validationMessage != nil)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private var statusColor: Color {
+        if manager.isRunning {
+            return .green
+        }
+        return manager.isReconnectScheduled ? .orange : .secondary
+    }
+
+    /// Selecting a saved tunnel loads it into the form.
+    private var tableSelection: Binding<PersistentIdentifier?> {
+        Binding(
+            get: { selectedSavedTunnelID },
+            set: { newValue in
+                guard let newValue,
+                      let tunnel = sessionTunnels.first(where: { $0.persistentModelID == newValue }) else {
+                    selectedSavedTunnelID = nil
+                    return
+                }
+                load(tunnel)
+            }
+        )
+    }
+
+    private var selectedTunnel: SavedSSHTunnel? {
+        guard let selectedSavedTunnelID else { return nil }
+        return sessionTunnels.first { $0.persistentModelID == selectedSavedTunnelID }
+    }
+
+    private func tunnel(for identifiers: Set<PersistentIdentifier>) -> SavedSSHTunnel? {
+        guard identifiers.count == 1, let identifier = identifiers.first else { return nil }
+        return sessionTunnels.first { $0.persistentModelID == identifier }
+    }
+
     private func load(_ tunnel: SavedSSHTunnel) {
         configuration = tunnel.configuration
         selectedSavedTunnelID = tunnel.persistentModelID
+    }
+
+    private func startNewTunnel() {
+        selectedSavedTunnelID = nil
+        configuration = SSHTunnelConfiguration()
     }
 
     private func tunnelKindTitle(_ kind: SSHTunnelKind) -> String {
@@ -5441,9 +5475,8 @@ private struct TunnelPanel: View {
     }
 
     private func saveCurrent() {
-        if let selectedSavedTunnelID,
-           let tunnel = sessionTunnels.first(where: { $0.persistentModelID == selectedSavedTunnelID }) {
-            tunnel.update(from: configuration, session: session)
+        if let selectedTunnel {
+            selectedTunnel.update(from: configuration, session: session)
         } else {
             let tunnel = SavedSSHTunnel(session: session, configuration: configuration)
             modelContext.insert(tunnel)
@@ -5491,21 +5524,21 @@ private struct EmbeddedSSHPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
                 TerminalTabStrip(
                     session: session,
                     workspace: terminalWorkspace
                 )
                 .frame(minWidth: 112)
 
-                Spacer(minLength: 8)
-
-                adaptiveToolbarActions
+                terminalActions
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(.bar, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.vertical, 4)
+            .background(.bar)
+
+            Divider()
 
             if let tab = terminalWorkspace.selectedTab {
                 TerminalTabView(
@@ -5523,73 +5556,34 @@ private struct EmbeddedSSHPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var adaptiveToolbarActions: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                multiExecButton
-                splitMenu
-                newTabMenu(compact: false)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-
-            HStack(spacing: 6) {
-                compactTerminalActionsMenu
-                newTabMenu(compact: true)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-        }
-    }
-
-    private var multiExecButton: some View {
-        Button(action: openMultiExec) {
-            Label(
-                language.localized("Multi-Exec", "批量执行"),
-                systemImage: "rectangle.3.group.bubble"
-            )
-        }
-        .buttonStyle(.bordered)
-        .help(multiExecHelpText)
-        .accessibilityIdentifier("terminal-multi-exec-button")
-    }
-
-    private var splitMenu: some View {
-        Menu {
-            splitActions
-        } label: {
-            Label(language.localized("Split", "分屏"), systemImage: "rectangle.split.2x1")
-        }
-        .menuStyle(.button)
-        .disabled(terminalWorkspace.selectedPane == nil)
-        .help(splitMenuHelpText)
-        .accessibilityIdentifier("terminal-split-menu")
-    }
-
-    private var compactTerminalActionsMenu: some View {
-        Menu {
+    /// Multi-Exec, Split and New Tab as compact icon buttons at the end of
+    /// the tab bar, the way Terminal and Safari place tab actions.
+    private var terminalActions: some View {
+        HStack(spacing: 4) {
             Button(action: openMultiExec) {
                 Label(
                     language.localized("Multi-Exec", "批量执行"),
                     systemImage: "rectangle.3.group.bubble"
                 )
             }
+            .help(multiExecHelpText)
             .accessibilityIdentifier("terminal-multi-exec-button")
 
-            Divider()
-            splitActions
-        } label: {
-            Label(
-                language.localized("Terminal Actions", "终端操作"),
-                systemImage: "ellipsis.circle"
-            )
-            .labelStyle(.iconOnly)
+            Menu {
+                splitActions
+            } label: {
+                Label(language.localized("Split", "分屏"), systemImage: "rectangle.split.2x1")
+            }
+            .disabled(terminalWorkspace.selectedPane == nil)
+            .help(splitMenuHelpText)
+            .accessibilityIdentifier("terminal-split-menu")
+
+            newTabMenu
         }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
         .menuStyle(.button)
-        .help(language.localized(
-            "Multi-Exec and split-pane actions.",
-            "批量执行和终端分屏操作。"
-        ))
-        .accessibilityLabel(language.localized("Terminal Actions", "终端操作"))
-        .accessibilityIdentifier("terminal-compact-actions-menu")
+        .fixedSize()
     }
 
     @ViewBuilder
@@ -5638,7 +5632,7 @@ private struct EmbeddedSSHPanel: View {
         .accessibilityIdentifier("terminal-close-active-pane-button")
     }
 
-    private func newTabMenu(compact: Bool) -> some View {
+    private var newTabMenu: some View {
         Menu {
             Button {
                 terminalWorkspace.addTab(kind: .ssh)
@@ -5659,13 +5653,7 @@ private struct EmbeddedSSHPanel: View {
                 )
             }
         } label: {
-            if compact {
-                Label(language.localized("New Tab", "新建标签页"), systemImage: "plus")
-                    .labelStyle(.iconOnly)
-            } else {
-                Label(language.localized("New Tab", "新建标签页"), systemImage: "plus")
-                    .labelStyle(.titleAndIcon)
-            }
+            Label(language.localized("New Tab", "新建标签页"), systemImage: "plus")
         }
         .help(language.localized("Open a new terminal tab.", "新建终端标签页。"))
         .accessibilityLabel(language.localized("New Tab", "新建标签页"))
@@ -5751,38 +5739,59 @@ private struct TerminalBlankPane: View {
     }
 }
 
+/// Tabs share the bar evenly like Safari and Terminal tabs, within a
+/// readable range; past the minimum width the bar scrolls.
+enum TerminalTabLayout {
+    static let spacing: CGFloat = 2
+    static let minimumWidth: CGFloat = 110
+    static let maximumWidth: CGFloat = 240
+
+    static func tabWidth(available: CGFloat, count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        let share = (available - CGFloat(count - 1) * spacing) / CGFloat(count)
+        return min(max(share, minimumWidth), maximumWidth)
+    }
+}
+
 private struct TerminalTabStrip: View {
     @Environment(\.appLanguage) private var language
     let session: RemoteSession
     @ObservedObject var workspace: TerminalWorkspaceState
 
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(workspace.tabs) { tab in
-                    let isSelected = workspace.selectedTabID == tab.id
-                    let title = tabTitle(for: tab)
+        GeometryReader { proxy in
+            let width = TerminalTabLayout.tabWidth(
+                available: proxy.size.width,
+                count: workspace.tabs.count
+            )
+            ScrollView(.horizontal) {
+                HStack(spacing: TerminalTabLayout.spacing) {
+                    ForEach(workspace.tabs) { tab in
+                        let title = tabTitle(for: tab)
 
-                    TerminalTabChip(
-                        title: title,
-                        isSelected: isSelected,
-                        canClose: true,
-                        onSelect: {
-                            workspace.selectedTabID = tab.id
-                        },
-                        onClose: {
-                            if workspace.hasRunningProcesses(inTab: tab.id),
-                               !confirmClosingRunningTab(title: title) {
-                                return
+                        TerminalTabChip(
+                            title: title,
+                            isSelected: workspace.selectedTabID == tab.id,
+                            canClose: true,
+                            onSelect: {
+                                workspace.selectedTabID = tab.id
+                            },
+                            onClose: {
+                                if workspace.hasRunningProcesses(inTab: tab.id),
+                                   !confirmClosingRunningTab(title: title) {
+                                    return
+                                }
+                                workspace.closeTab(id: tab.id)
                             }
-                            workspace.closeTab(id: tab.id)
-                        }
-                    )
+                        )
+                        .frame(width: width)
+                    }
                 }
+                .frame(height: proxy.size.height)
             }
-            .padding(.vertical, 1)
+            .scrollIndicators(.hidden)
         }
-        .scrollIndicators(.hidden)
+        .frame(height: 26)
     }
 
     /// Closing a window already asks before ending sessions; a tab close
@@ -5816,6 +5825,8 @@ private struct TerminalTabStrip: View {
     }
 }
 
+/// One terminal tab: the title fills the tab and the close button appears
+/// at the leading edge on hover or when the tab is selected.
 private struct TerminalTabChip: View {
     @Environment(\.appLanguage) private var language
     let title: String
@@ -5823,47 +5834,48 @@ private struct TerminalTabChip: View {
     let canClose: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
-    @State private var isHoveringClose = false
+    @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 5) {
-            Button(action: onSelect) {
-                Text(title)
-                    .lineLimit(1)
-            }
-            .buttonStyle(.plain)
-            .help(title)
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
-            .accessibilityValue(
-                isSelected
-                    ? language.localized("Selected", "已选择")
-                    : language.localized("Not selected", "未选择")
-            )
-
+        Button(action: onSelect) {
+            Text(title)
+                .font(.callout.weight(isSelected ? .medium : .regular))
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityValue(
+            isSelected
+                ? language.localized("Selected", "已选择")
+                : language.localized("Not selected", "未选择")
+        )
+        .overlay(alignment: .leading) {
             if canClose {
                 Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 11, weight: .semibold))
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
                         .frame(width: 16, height: 16)
-                        .contentShape(Circle())
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(isHoveringClose ? .primary : .secondary)
-                .opacity(isHoveringClose || isSelected ? 0.78 : 0.42)
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 6)
+                .opacity(isHovering || isSelected ? 1 : 0)
+                .help(language.localized("Close Tab", "关闭标签页"))
                 .accessibilityLabel(language.localized("Close tab", "关闭标签页"))
-                .onHover { isHoveringClose = $0 }
             }
         }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(isSelected ? Color.accentColor : .primary)
-        .padding(.leading, 8)
-        .padding(.trailing, canClose ? 5 : 8)
-        .padding(.vertical, 3)
-        .background(
-            isSelected ? AppTheme.selectionStrong : AppTheme.surface,
-            in: Capsule(style: .continuous)
-        )
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(isSelected ? 0.10 : (isHovering ? 0.05 : 0)))
+        }
+        .onHover { isHovering = $0 }
         .accessibilityElement(children: .contain)
     }
 }
@@ -5906,7 +5918,7 @@ private struct TerminalTabView: View {
                     .overlay {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .stroke(
-                                workspace.selectedPane?.id == pane.id
+                                tab.panes.count > 1 && workspace.selectedPane?.id == pane.id
                                     ? Color.accentColor
                                     : Color.clear,
                                 lineWidth: 2
@@ -6102,169 +6114,13 @@ private struct TerminalPaneView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    Button(action: onFocus) {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(isFocused ? Color.accentColor : Color.secondary.opacity(0.45))
-                                .frame(width: 7, height: 7)
-                                .accessibilityHidden(true)
-
-                            Text(paneTitle)
-                                .font(.caption.monospaced().weight(.semibold))
-                                .foregroundStyle(isFocused ? .primary : .secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .help(language.localized("Make this the active pane", "将此窗格设为当前窗格"))
-                    .accessibilityLabel(language.localized(
-                        "Activate terminal pane \(paneTitle)",
-                        "激活终端窗格 \(paneTitle)"
-                    ))
-                    .accessibilityAddTraits(isFocused ? .isSelected : [])
-                    .accessibilityValue(
-                        isFocused
-                            ? language.localized("Active pane", "当前窗格")
-                            : language.localized("Inactive pane", "非当前窗格")
-                    )
-                    .accessibilityIdentifier("terminal-pane-activate-button")
-
-                    Spacer()
-
-                    if isMCPControllablePane {
-                        Toggle(isOn: broadcastReadyBinding) {
-                            Label(
-                                language.localized("Multi-Exec Ready", "批量执行就绪"),
-                                systemImage: interactiveSession.isBroadcastReady
-                                    ? "checkmark.circle.fill"
-                                    : "circle"
-                            )
-                        }
-                        .toggleStyle(.button)
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .tint(interactiveSession.isBroadcastReady ? .orange : .accentColor)
-                        .disabled(!canChangeBroadcastReadiness)
-                        .help(broadcastReadyHelpText)
-                        .fixedSize()
-                        .accessibilityIdentifier("terminal-multi-exec-ready-toggle")
-
-                        Button {
-                            beginRenamingMCPPane()
-                        } label: {
-                            Label(mcpPaneDisplayName, systemImage: "tag")
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .frame(maxWidth: 160)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .help(language.localized(
-                            "MCP name for this terminal pane. AI tools see this name in jts_list_open_terminals.",
-                            "这个终端窗格的 MCP 名称。AI 工具会在 jts_list_open_terminals 里看到它。"
-                        ))
-                        .fixedSize()
-                        .accessibilityIdentifier("terminal-mcp-pane-name-button")
-
-                        Button {
-                            copyMCPPaneDisplayName()
-                        } label: {
-                            Image(systemName: didCopyMCPPaneName ? "checkmark" : "doc.on.doc")
-                                .imageScale(.small)
-                                .frame(width: 14, height: 14)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .help(language.localized(
-                            "Copy this MCP pane name for AI tools.",
-                            "复制这个 MCP 窗格名称，便于发给 AI 识别。"
-                        ))
-                        .accessibilityLabel(language.localized("Copy MCP pane name", "复制 MCP 窗格名称"))
-                        .accessibilityIdentifier("terminal-mcp-pane-name-copy-button")
-                        .disabled(mcpPaneDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .fixedSize()
-
-                        Menu {
-                            Toggle(isOn: mcpProfileEnabledBinding) {
-                                Label(language.localized("Enable MCP", "启用 MCP"), systemImage: "checkmark.shield")
-                            }
-                            .help(mcpProfileEnabledHelpText)
-                            .accessibilityIdentifier("terminal-mcp-profile-enabled-toggle")
-
-                            Toggle(isOn: persistentMCPProfileBinding) {
-                                Label(language.localized("Persistent Control", "长期控制"), systemImage: "bolt.shield")
-                            }
-                            .disabled(!session.mcpEnabled)
-                            .help(persistentMCPProfileHelpText)
-                            .accessibilityIdentifier("terminal-mcp-persistent-control-toggle")
-
-                            Toggle(isOn: mcpControlBinding) {
-                                Label(language.localized("Pane Control", "本窗格控制"), systemImage: "exclamationmark.shield")
-                            }
-                            .disabled(!session.mcpEnabled || !interactiveSession.isRunning || isPersistentMCPControlAllowed)
-                            .help(mcpControlHelpText)
-                            .accessibilityIdentifier("terminal-mcp-control-toggle")
-                        } label: {
-                            Label("MCP", systemImage: mcpControlMenuSymbol)
-                                .lineLimit(1)
-                        }
-                        .menuStyle(.button)
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .help(mcpControlMenuHelpText)
-                        .fixedSize()
-                        .accessibilityIdentifier("terminal-mcp-control-menu")
-                    }
-
-                    if interactiveSession.isRunning ||
-                        interactiveSession.isReconnectScheduled ||
-                        interactiveSession.isSSHStartPending {
-                        Button(role: .destructive) {
-                            interactiveSession.stop()
-                        } label: {
-                            Label(
-                                interactiveSession.isSSHStartPending
-                                    ? language.localized("Cancel Connection", "取消连接")
-                                    : language.localized("Stop", "停止"),
-                                systemImage: "stop.fill"
-                            )
-                        }
-                        .accessibilityLabel(
-                            interactiveSession.isSSHStartPending
-                                ? language.localized("Cancel Connection", "取消连接")
-                                : language.localized("Stop", "停止")
-                        )
-                        .fixedSize()
-                        .accessibilityIdentifier("terminal-stop-button")
-                    } else {
-                        Button {
-                            start()
-                        } label: {
-                            Label(language.localized("Start", "启动"), systemImage: "play.fill")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(kind == .ssh && (session.connectionType != .ssh || !session.isConnectable))
-                        .accessibilityLabel(language.localized("Start", "启动"))
-                        .fixedSize()
-                        .accessibilityIdentifier("terminal-start-button")
-                    }
-                }
-                .font(.caption)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 2)
-
-                compactPaneHeader
-                    .font(.caption)
-                    .padding(.horizontal, 2)
-            }
+            paneHeader
 
             if !interactiveSession.reconnectStatus.isBlank {
                 Label(interactiveSession.reconnectStatus, systemImage: "arrow.clockwise")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 8)
             }
 
             if interactiveSession.isSSHStartPending,
@@ -6278,19 +6134,19 @@ private struct TerminalPaneView: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, 8)
             }
 
             if !mcpProfileSaveError.isBlank {
                 Label(mcpProfileSaveError, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 8)
             }
 
             if let recovery = interactiveSession.structuredCommandRecovery {
                 structuredCommandRecoveryBanner(recovery)
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 8)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("terminal-structured-command-recovery-banner")
             }
@@ -6303,7 +6159,7 @@ private struct TerminalPaneView: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.orange)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, 8)
             }
 
             #if canImport(SwiftTerm)
@@ -6427,24 +6283,29 @@ private struct TerminalPaneView: View {
         }
     }
 
-    private var compactPaneHeader: some View {
-        HStack(spacing: 6) {
-            compactPaneActivationButton
+    /// One row above each pane: which pane is active, Multi-Exec readiness,
+    /// the pane's MCP menu and Start/Stop.
+    private var paneHeader: some View {
+        HStack(spacing: 8) {
+            paneActivationButton
                 .layoutPriority(1)
 
             Spacer(minLength: 4)
 
             if isMCPControllablePane {
-                compactBroadcastReadyToggle
-                compactPaneActionsMenu
+                broadcastReadyToggle
+                paneMCPMenu
             }
 
-            compactProcessControlButton
+            processControlButton
         }
+        .controlSize(.small)
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
     }
 
-    private var compactPaneActivationButton: some View {
+    private var paneActivationButton: some View {
         Button(action: onFocus) {
             HStack(spacing: 5) {
                 Circle()
@@ -6457,11 +6318,12 @@ private struct TerminalPaneView: View {
                     .accessibilityHidden(true)
 
                 Text(paneTitle)
-                    .font(.caption.monospaced().weight(.semibold))
+                    .font(.callout.weight(isFocused ? .semibold : .regular))
                     .foregroundStyle(isFocused ? .primary : .secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(language.localized(
@@ -6481,7 +6343,7 @@ private struct TerminalPaneView: View {
         .accessibilityIdentifier("terminal-pane-activate-button")
     }
 
-    private var compactBroadcastReadyToggle: some View {
+    private var broadcastReadyToggle: some View {
         Toggle(isOn: broadcastReadyBinding) {
             Label(
                 language.localized("Ready", "就绪"),
@@ -6491,8 +6353,6 @@ private struct TerminalPaneView: View {
             )
         }
         .toggleStyle(.button)
-        .buttonStyle(.bordered)
-        .controlSize(.mini)
         .tint(interactiveSession.isBroadcastReady ? .orange : .accentColor)
         .disabled(!canChangeBroadcastReadiness)
         .help(broadcastReadyHelpText)
@@ -6503,8 +6363,13 @@ private struct TerminalPaneView: View {
         .accessibilityIdentifier("terminal-multi-exec-ready-toggle")
     }
 
-    private var compactPaneActionsMenu: some View {
+    private var paneMCPMenu: some View {
         Menu {
+            Text(language.localized(
+                "Name for AI tools: \(mcpPaneDisplayName)",
+                "AI 工具看到的名称：\(mcpPaneDisplayName)"
+            ))
+
             Button {
                 beginRenamingMCPPane()
             } label: {
@@ -6569,19 +6434,11 @@ private struct TerminalPaneView: View {
             .help(mcpControlHelpText)
             .accessibilityIdentifier("terminal-mcp-control-toggle")
         } label: {
-            Label(
-                language.localized("Pane", "窗格"),
-                systemImage: "ellipsis.circle"
-            )
+            Label("MCP", systemImage: mcpControlMenuSymbol)
         }
         .menuStyle(.button)
-        .buttonStyle(.bordered)
-        .controlSize(.mini)
         .fixedSize()
-        .help(language.localized(
-            "MCP name and control settings for this pane.",
-            "管理此窗格的 MCP 名称和控制设置。"
-        ))
+        .help(mcpControlMenuHelpText)
         .accessibilityLabel(language.localized(
             "Pane Actions",
             "窗格操作"
@@ -6590,7 +6447,7 @@ private struct TerminalPaneView: View {
     }
 
     @ViewBuilder
-    private var compactProcessControlButton: some View {
+    private var processControlButton: some View {
         if interactiveSession.isRunning
             || interactiveSession.isReconnectScheduled
             || interactiveSession.isSSHStartPending {
@@ -8287,225 +8144,6 @@ private enum TerminalDisplaySanitizer {
     }
 }
 
-private struct PasswordPanel: View {
-    @Environment(\.appLanguage) private var language
-    let session: RemoteSession
-    @State private var secret = ""
-    @State private var status: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SectionTitle(language.localized("Local Password Vault", "本地密码库"))
-
-            PasswordRevealField(
-                language.localized("Password or passphrase", "密码或密钥口令"),
-                text: $secret,
-                accessibilityIdentifier: "credential-secret-field"
-            )
-
-            SSHPasswordInputMetadata(password: secret)
-
-            HStack {
-                Button {
-                    save()
-                } label: {
-                    Label(language.localized("Save to Vault", "保存到密码库"), systemImage: "lock.doc")
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("save-credential-button")
-                .disabled(!session.isConnectable || secret.isEmpty)
-
-                Button {
-                    load()
-                } label: {
-                    Label(language.localized("Check Saved", "检查已保存"), systemImage: "magnifyingglass")
-                }
-                .disabled(!session.isConnectable)
-
-                Button(role: .destructive) {
-                    delete()
-                } label: {
-                    Label(language.localized("Delete", "删除"), systemImage: "trash")
-                }
-                .disabled(!session.isConnectable)
-            }
-
-            Text(status ?? language.localized("No password loaded.", "尚未读取密码。"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text(language.localized(
-                "Passwords are stored in the local encrypted SQLite vault. JTS Terminal reads saved values for SSH, SFTP, SCP, and tunnel workflows when a password is needed. For key authentication, choose the private key with Browse in Server Properties, or load it into the macOS ssh-agent with ssh-add. Third-party agents such as 1Password or Secretive cannot be reached from App Sandbox.",
-                "密码会保存到本地加密 SQLite 密码库。JTS Terminal 的 SSH、SFTP、SCP 和隧道流程会在需要密码时读取这里保存的值。使用密钥认证时，请在服务器属性中通过“浏览”选择私钥，或用 ssh-add 将密钥载入 macOS 自带的 ssh-agent。App Sandbox 无法访问 1Password、Secretive 等第三方 agent。"
-            ))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(20)
-        .panelBackground()
-    }
-
-    private func save() {
-        let account = CredentialStore.account(for: session)
-        let address = session.localizedAddress(language: language)
-        let secretToSave = secret
-        status = language.localized("Saving password to local encrypted vault...", "正在保存密码到本地加密密码库...")
-
-        Task {
-            do {
-                try await Task.detached(priority: .userInitiated) {
-                    try SSHCredentialVaultAccess.save(secret: secretToSave, account: account)
-                }.value
-                secret = ""
-                status = language.localized("Password saved for \(address).", "已为 \(address) 保存密码。")
-            } catch {
-                status = error.localizedDescription
-            }
-        }
-    }
-
-    private func load() {
-        let account = CredentialStore.account(for: session)
-        status = language.localized("Checking local encrypted vault...", "正在检查本地加密密码库...")
-
-        Task {
-            do {
-                let stored = try await Task.detached(priority: .userInitiated) {
-                    try SSHCredentialVaultAccess.read(account: account)
-                }.value
-                status = stored == nil
-                    ? language.localized("No password saved.", "未保存密码。")
-                    : language.localized("Password exists in the local encrypted vault.", "本地加密密码库中已有密码。")
-            } catch {
-                status = error.localizedDescription
-            }
-        }
-    }
-
-    private func delete() {
-        let account = CredentialStore.account(for: session)
-        status = language.localized("Deleting saved password...", "正在删除保存的密码...")
-
-        Task {
-            do {
-                try await Task.detached(priority: .userInitiated) {
-                    try SSHCredentialVaultAccess.delete(account: account)
-                }.value
-                status = language.localized("Password deleted.", "密码已删除。")
-            } catch {
-                status = error.localizedDescription
-            }
-        }
-    }
-}
-
-private struct ProfilePortabilityPanel: View {
-    @Environment(\.appLanguage) private var language
-    let session: RemoteSession
-    let sessions: [RemoteSession]
-    let importProfiles: ([RemoteSessionProfile]) -> Void
-    @State private var status: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SectionTitle(language.localized("Import / Export Profiles", "导入导出配置"))
-
-            HStack {
-                Button {
-                    export([session], suggestedName: safeFilename(session.name.nilIfBlank ?? session.host.nilIfBlank ?? "session"))
-                } label: {
-                    Label(language.localized("Export Current", "导出当前"), systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    export(sessions, suggestedName: "jts-terminal-mac-sessions")
-                } label: {
-                    Label(language.localized("Export All", "全部导出"), systemImage: "archivebox")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(sessions.isEmpty)
-
-                Button {
-                    importFile()
-                } label: {
-                    Label(language.localized("Import", "导入"), systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.bordered)
-            }
-
-            Text(status ?? language.localized(
-                "Exported profiles do not include saved password secrets.",
-                "导出的配置不包含已保存的密码。"
-            ))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-        }
-        .padding(20)
-        .panelBackground()
-    }
-
-    private func export(_ sessions: [RemoteSession], suggestedName: String) {
-        do {
-            let data = try SessionProfileCodec.encode(sessions: sessions)
-            let panel = NSSavePanel()
-            panel.nameFieldStringValue = "\(suggestedName).json"
-            panel.allowedContentTypes = [.json]
-
-            guard panel.runModal() == .OK, let url = panel.url else {
-                status = language.localized("Export cancelled.", "已取消导出。")
-                return
-            }
-
-            try data.write(to: url, options: .atomic)
-            status = language.localized(
-                "Exported \(sessions.count) profile(s) to \(url.lastPathComponent). Saved password secrets were not exported.",
-                "已将 \(sessions.count) 个配置导出到 \(url.lastPathComponent)。已保存的密码未被导出。"
-            )
-        } catch {
-            status = language.localized(
-                "Export failed: \(error.localizedDescription)",
-                "导出失败：\(error.localizedDescription)"
-            )
-        }
-    }
-
-    private func importFile() {
-        do {
-            let panel = NSOpenPanel()
-            panel.canChooseFiles = true
-            panel.canChooseDirectories = false
-            panel.allowsMultipleSelection = false
-            panel.allowedContentTypes = [.json]
-
-            guard panel.runModal() == .OK, let url = panel.url else {
-                status = language.localized("Import cancelled.", "已取消导入。")
-                return
-            }
-
-            let profiles = try SessionProfileCodec.decode(Data(contentsOf: url))
-            importProfiles(profiles)
-            status = language.localized(
-                "Imported \(profiles.count) profile(s) from \(url.lastPathComponent). Passwords are never imported; JTS Terminal will ask before the first password-based connection.",
-                "已从 \(url.lastPathComponent) 导入 \(profiles.count) 个配置。密码不会被导入；首次使用密码连接前 JTS Terminal 会询问。"
-            )
-        } catch {
-            status = language.localized(
-                "Import failed: \(error.localizedDescription)",
-                "导入失败：\(error.localizedDescription)"
-            )
-        }
-    }
-
-    private func safeFilename(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-            .replacingOccurrences(of: " ", with: "-")
-    }
-}
-
 private struct EmptyWorkspace: View {
     @Environment(\.appLanguage) private var language
     let addSession: () -> Void
@@ -8523,54 +8161,6 @@ private struct EmptyWorkspace: View {
                 .buttonStyle(.borderedProminent)
         }
         .accessibilityIdentifier("empty-workspace-content")
-    }
-}
-
-private struct SectionTitle: View {
-    let title: String
-
-    init(_ title: String) {
-        self.title = title
-    }
-
-    var body: some View {
-        Text(title)
-            .font(.headline)
-    }
-}
-
-private enum AppTheme {
-    static let signal = Color.accentColor
-    static let signalSoft = Color.accentColor.opacity(0.12)
-    static let ember = Color.orange
-    static let canvas = Color(nsColor: .windowBackgroundColor)
-    static let sidebar = Color(nsColor: .controlBackgroundColor)
-    static let panel = Color(nsColor: .textBackgroundColor)
-    static let surface = Color(nsColor: .quaternaryLabelColor).opacity(0.18)
-    static let border = Color(nsColor: .separatorColor).opacity(0.55)
-    static let selection = Color.accentColor.opacity(0.14)
-    static let selectionBorder = Color.accentColor.opacity(0.28)
-    static let selectionStrong = Color.accentColor.opacity(0.20)
-    static let selectionBorderStrong = Color.accentColor.opacity(0.42)
-}
-
-private struct PanelBackground: ViewModifier {
-    let cornerRadius: CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .background(AppTheme.panel, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(AppTheme.border, lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.025), radius: 8, x: 0, y: 3)
-    }
-}
-
-private extension View {
-    func panelBackground(cornerRadius: CGFloat = 24) -> some View {
-        modifier(PanelBackground(cornerRadius: cornerRadius))
     }
 }
 

@@ -51,6 +51,11 @@ struct RemoteFileEntry: Identifiable, Equatable {
         }
     }
 
+    /// Size for sorting; folders and unknown sizes sort first.
+    var sortableByteSize: Int64 {
+        byteSize ?? -1
+    }
+
     var formattedSize: String {
         guard let byteSize else { return size }
         return ByteCountFormatter.string(fromByteCount: byteSize, countStyle: .file)

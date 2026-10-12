@@ -1918,29 +1918,15 @@ struct RDPDesktopWorkspace: View {
             )
         }
 
-        switch state.phase {
-        case .closed:
-            return language.localized("Disconnected", "已断开")
-        case .connecting:
-            return language.localized("Connecting", "正在连接")
-        case .awaitingCertificateTrust:
-            return language.localized("Certificate approval required", "需要确认服务器证书")
-        case .authenticating:
-            return language.localized("Authenticating", "正在认证")
-        case .connected:
-            return language.localized("Connected", "已连接")
-        case .reconnecting:
-            if let attempt = state.reconnectAttempt,
-               let maximumAttempts = state.reconnectMaximumAttempts {
-                return language.localized(
-                    "Reconnecting (\(attempt)/\(maximumAttempts))",
-                    "正在重连（\(attempt)/\(maximumAttempts)）"
-                )
-            }
-            return language.localized("Reconnecting", "正在重连")
-        case .failed:
-            return language.localized("Connection failed", "连接失败")
+        if state.phase == .reconnecting,
+           let attempt = state.reconnectAttempt,
+           let maximumAttempts = state.reconnectMaximumAttempts {
+            return language.localized(
+                "Reconnecting (\(attempt)/\(maximumAttempts))",
+                "正在重连（\(attempt)/\(maximumAttempts)）"
+            )
         }
+        return state.phase.title(language: language)
     }
 
     private var connectionStatusDetail: String {

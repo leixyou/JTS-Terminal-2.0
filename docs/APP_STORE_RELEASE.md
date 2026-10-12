@@ -32,7 +32,7 @@ unattended-service acceptance.
 - Entitlements: the Mac app requests Downloads, Pictures, Music and Movies
   read/write so MCP transfers can use those folders without a prompt. State this
   in the review notes, or remove the entitlements and rely on folders the user
-  authorizes in **MCP → Local Transfer Folders…**.
+  authorizes in **Settings → MCP → Local Transfer Folders**.
 - Privacy: MCP sends command output, file content and desktop images to the AI
   client the user registers. The App Privacy answers, the privacy policy at
   `https://www.lljts.com/privacy` and the in-app MCP consent text must say so.
@@ -83,5 +83,5 @@ Reviewers cannot reach a private LAN. Provide in the review notes:
   shows a hint in Server Properties when `SSH_AUTH_SOCK` points to such a
   socket. Confirm the launchd result on 26.4 itself before promising ssh-agent
   support in the App Store description.
-- Check both languages (toolbar language switch) on the Files, Tunnels, Mac
-  Desktop and Import/Export screens.
+- Check both languages (Settings > General > Language) on the Files, Tunnels
+  and Mac Desktop screens, in Settings and in File > Import/Export Servers.

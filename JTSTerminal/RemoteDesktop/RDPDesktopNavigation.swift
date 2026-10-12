@@ -10,27 +10,71 @@ struct RDPDesktopLauncher: View {
     @ObservedObject private var runtime = RDPDesktopRuntimeStore.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label(target.name, systemImage: "desktopcomputer").font(.title2)
-            Text(language.localized(
-                "Open this Windows workspace in its own window. Closing that window keeps the connection and authorized work running; use Disconnect to end the desktop session.",
-                "在独立窗口中打开此 Windows 工作区。关闭窗口会保留连接和已授权的工作；使用“断开”结束桌面会话。"))
-                .foregroundStyle(.secondary)
-            HStack {
-                Button(language.localized("Open Desktop Window", "打开桌面窗口")) {
-                    windows.open(target, openProperties: openProperties)
+        ContentUnavailableView {
+            Label(title, systemImage: ServerSymbol.name(for: .rdp))
+        } description: {
+            VStack(spacing: 10) {
+                Text(language.localized(
+                    "Open this Windows workspace in its own window. Closing that window keeps the connection and authorized work running; use Disconnect to end the desktop session.",
+                    "在独立窗口中打开此 Windows 工作区。关闭窗口会保留连接和已授权的工作；使用“断开”结束桌面会话。"))
+                if let state = runtime.statesByTargetID[target.targetID] {
+                    Label(state.phase.title(language: language), systemImage: state.phase.symbol)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("rdp-launcher-connection-status")
                 }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("rdp-open-window-button")
-                Button(language.localized("Server Properties", "服务器属性"), action: openProperties)
             }
-            if let state = runtime.statesByTargetID[target.targetID] {
-                Text(state.phase.rawValue).font(.caption).foregroundStyle(.secondary)
+        } actions: {
+            Button(language.localized("Open Desktop Window", "打开桌面窗口")) {
+                windows.open(target, openProperties: openProperties)
             }
-            Spacer()
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("rdp-open-window-button")
+            Button(language.localized("Server Properties", "服务器属性"), action: openProperties)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var title: String {
+        let trimmed = target.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? language.localized("Windows Desktop", "Windows 桌面") : trimmed
+    }
+}
+
+extension RDPConnectionPhase {
+    func title(language: AppLanguage) -> String {
+        switch self {
+        case .closed:
+            return language.localized("Disconnected", "已断开")
+        case .connecting:
+            return language.localized("Connecting", "正在连接")
+        case .awaitingCertificateTrust:
+            return language.localized("Certificate approval required", "需要确认服务器证书")
+        case .authenticating:
+            return language.localized("Authenticating", "正在认证")
+        case .connected:
+            return language.localized("Connected", "已连接")
+        case .reconnecting:
+            return language.localized("Reconnecting", "正在重连")
+        case .failed:
+            return language.localized("Connection failed", "连接失败")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .closed:
+            return "circle.dashed"
+        case .connecting, .authenticating, .reconnecting:
+            return "arrow.triangle.2.circlepath"
+        case .awaitingCertificateTrust:
+            return "checkmark.shield"
+        case .connected:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        }
     }
 }
 

@@ -12,12 +12,15 @@ struct MacDesktopIntegratedPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker(language.localized("Desktop connection", "桌面连接方式"), selection: $mode) {
-                Text(language.localized("Embedded desktop · LAN / VPN", "嵌入式桌面 · 局域网 / VPN")).tag(0)
-                Text(language.localized("System Screen Sharing · Relay", "系统屏幕共享 · 公网中继")).tag(1)
+                Text(language.localized("Embedded · LAN / VPN", "嵌入式 · 局域网 / VPN")).tag(0)
+                Text(language.localized("Screen Sharing · Relay", "屏幕共享 · 公网中继")).tag(1)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .padding(10)
+            .fixedSize()
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(.bar)
             Divider()
             if mode == 0 {
                 MacDesktopPanel(session: session, workspace: ApplicationWorkspaceRuntime.shared.macDesktops.workspace(for: session.persistentModelID))
@@ -70,9 +73,8 @@ private struct MacNativeScreenSharingPanel: View {
                     }
                 }.disabled(enrollment.busy || relayURL.isEmpty || state.active)
                 if let record {
-                    Text(record.state == "complete"
-                         ? language.localized("Mac paired", "Mac 已配对")
-                         : language.localized("Pairing status: \(record.state)", "配对状态：\(record.state)"))
+                    Label(pairingStatus(record.state), systemImage: ["bound", "complete"].contains(record.state) ? "checkmark.circle" : "link")
+                        .accessibilityIdentifier("mac-native-sharing-pairing-status")
                     if !["complete", "cancelled", "expired"].contains(record.state) {
                         Text(record.attempt.code).font(.caption.monospaced()).textSelection(.enabled)
                         HStack {
@@ -124,6 +126,30 @@ private struct MacNativeScreenSharingPanel: View {
             }
         }
     }
+    /// Enrollment states come from the relay protocol; show them in words.
+    private func pairingStatus(_ state: String) -> String {
+        switch state {
+        case "creating":
+            return language.localized("Creating access code", "正在创建接入码")
+        case "pending":
+            return language.localized("Waiting for the Mac to enter the access code", "等待 Mac 输入接入码")
+        case "claimed":
+            return language.localized("Completing pairing", "正在完成配对")
+        case "bound":
+            return language.localized("Mac bound · verifying", "Mac 已绑定 · 正在验证")
+        case "complete":
+            return language.localized("Mac paired", "Mac 已配对")
+        case "confirmationRequired":
+            return language.localized("Update JTS Mac Companion and create a new code", "请更新 JTS Mac Companion 后重新生成接入码")
+        case "cancelled":
+            return language.localized("Access code cancelled", "接入码已取消")
+        case "expired":
+            return language.localized("Access code expired", "接入码已过期")
+        default:
+            return language.localized("Pairing status unknown", "配对状态未知")
+        }
+    }
+
     private var ownerCheck: @MainActor @Sendable () throws -> Void {
         let expected = session.mcpGrantTargetBinding
         return { guard session.connectionType == .macDesktop, session.mcpGrantTargetBinding == expected else { throw CompanionTargetRouteError.changed } }

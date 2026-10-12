@@ -56,6 +56,8 @@ struct JTSTerminalApp: App {
         } label: {
             RDPDesktopMenuLabel()
         }
+        // The view sets the localized title; this one names the window in
+        // the Window menu before it first opens.
         Window("Companion Devices", id: CompanionDevicesModel.windowID) {
             CompanionDevicesView()
         }
@@ -287,8 +289,10 @@ struct JTSTerminalCommandHandlers {
     var showTerminal: () -> Void
     var showFiles: () -> Void
     var showTunnels: () -> Void
-    var showCredentials: () -> Void
-    var showProfiles: () -> Void
+    var importServers: () -> Void
+    var exportSelectedServer: () -> Void
+    var exportAllServers: () -> Void
+    var hasServers: Bool
     var availableWorkspaceFeatures: [WorkspaceFeature]
     var hasSelectedServer: Bool
     var selectedServerOpenCommand: JTSTerminalServerOpenCommand
@@ -352,6 +356,23 @@ private struct JTSTerminalCommands: Commands {
             }
             .keyboardShortcut("n", modifiers: .command)
             .disabled(handlers == nil)
+        }
+
+        CommandGroup(replacing: .importExport) {
+            Button(language.localized("Import Servers…", "导入服务器…")) {
+                handlers?.importServers()
+            }
+            .disabled(handlers == nil)
+
+            Button(language.localized("Export Selected Server…", "导出所选服务器…")) {
+                handlers?.exportSelectedServer()
+            }
+            .disabled(handlers?.hasSelectedServer != true)
+
+            Button(language.localized("Export All Servers…", "导出全部服务器…")) {
+                handlers?.exportAllServers()
+            }
+            .disabled(handlers?.hasServers != true)
         }
 
         CommandMenu(language.localized("Server", "服务器")) {
@@ -461,23 +482,6 @@ private struct JTSTerminalCommands: Commands {
                     handlers?.showTunnels()
                 }
                 .keyboardShortcut("3", modifiers: .command)
-            }
-
-            if supportsWorkspaceFeature(.credentials) {
-                Button(language.localized("Show Password", "显示密码")) {
-                    handlers?.showCredentials()
-                }
-                .keyboardShortcut("4", modifiers: .command)
-            }
-
-            if supportsWorkspaceFeature(.profiles) {
-                if (handlers?.availableWorkspaceFeatures.count ?? 0) > 1 {
-                    Divider()
-                }
-                Button(language.localized("Show Import/Export", "显示导入导出")) {
-                    handlers?.showProfiles()
-                }
-                .keyboardShortcut("5", modifiers: .command)
             }
 
             if handlers?.availableWorkspaceFeatures.isEmpty != false {

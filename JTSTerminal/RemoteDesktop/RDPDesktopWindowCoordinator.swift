@@ -105,6 +105,9 @@ final class RDPDesktopWindowCoordinator: ObservableObject {
     static func hostingController<Content: View>(rootView: Content) -> NSHostingController<Content> {
         let controller = NSHostingController(rootView: rootView)
         controller.sizingOptions = []
+        // The route picker lives in the window toolbar; the title stays the
+        // one the coordinator sets.
+        controller.sceneBridgingOptions = [.toolbars]
         return controller
     }
 
@@ -223,24 +226,29 @@ private struct RDPDesktopWindowContent: View {
     @State private var routeError: String?
     @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.defaultLanguage.rawValue
 
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRawValue) ?? .defaultLanguage
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Picker("Desktop", selection: Binding(get: { route }, set: { selected in
-                    Task {
-                        do {
-                            await runtime.close(targetID: target.targetID)
-                            try await companion.choose(selected, target: target)
-                            route = selected; routeError = nil
-                        } catch { routeError = companion.safeCode(error) }
-                    }
-                })) {
-                    Text("RDP").tag(CompanionDesktopRoutePreference.rdp)
-                    Text("Companion").tag(CompanionDesktopRoutePreference.companion)
-                }.pickerStyle(.segmented).frame(width: 220)
-                Spacer()
-                if let routeError { Text(routeError).font(.caption).foregroundStyle(.orange) }
-            }.padding(8)
+            if let routeError {
+                Label(
+                    language.localized(
+                        "Could not switch the desktop route: \(routeError)",
+                        "无法切换桌面线路：\(routeError)"
+                    ),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.callout)
+                .foregroundStyle(.orange)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.bar)
+                Divider()
+            }
             if route == .companion {
                 CompanionDesktopWorkspace(target: target, toggleFullScreen: toggleFullScreen)
             } else {
@@ -248,8 +256,32 @@ private struct RDPDesktopWindowContent: View {
                     openServerProperties: openProperties, toggleFullScreen: toggleFullScreen)
             }
         }
-            .controlSize(.small)
-            .environment(\.appLanguage, AppLanguage(rawValue: languageRawValue) ?? .defaultLanguage)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker(language.localized("Desktop Route", "桌面线路"), selection: Binding(get: { route }, set: { selected in
+                        Task {
+                            do {
+                                await runtime.close(targetID: target.targetID)
+                                try await companion.choose(selected, target: target)
+                                route = selected; routeError = nil
+                            } catch { routeError = companion.safeCode(error) }
+                        }
+                    })) {
+                        Text(language.localized("RDP", "RDP"))
+                            .tag(CompanionDesktopRoutePreference.rdp)
+                        Text(language.localized("Companion", "Companion"))
+                            .tag(CompanionDesktopRoutePreference.companion)
+                    }
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                    .help(language.localized(
+                        "RDP shows the Windows desktop over Remote Desktop. Companion streams it through the paired Windows Companion. Switching closes the current desktop connection.",
+                        "RDP 通过远程桌面显示 Windows 桌面；Companion 通过已配对的 Windows Companion 传输画面。切换会关闭当前桌面连接。"
+                    ))
+                    .accessibilityIdentifier("rdp-desktop-route-picker")
+                }
+            }
+            .environment(\.appLanguage, language)
             .accessibilityIdentifier("rdp-independent-desktop")
             .task { if let binding = try? await companion.route(for: target) { route = binding.effectiveDesktopRoute } }
             .onReceive(NotificationCenter.default.publisher(for: .jtsCompanionTargetRouteChanged)) { notification in
