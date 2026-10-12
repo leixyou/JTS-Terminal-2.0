@@ -1952,7 +1952,7 @@ nonisolated struct MCPClientRegistrar {
             }
             let inner = String(segment.dropFirst().dropLast())
             guard !inner.isEmpty,
-                  inner.unicodeScalars.allSatisfy { bareKeyCharacters.contains($0) } else {
+                  inner.unicodeScalars.allSatisfy({ bareKeyCharacters.contains($0) }) else {
                 return segment
             }
             return inner
