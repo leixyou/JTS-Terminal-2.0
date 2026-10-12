@@ -641,14 +641,13 @@ final class JTSTerminalUITests: XCTestCase {
         hostedRDPDesktopWindow().buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(waitUntilMissing(workspace, timeout: 5), "Closing hides the desktop window.")
         app.windows["com.lljts.JTSTerminal.main-window"].firstMatch.click()
-        app.typeKey("5", modifierFlags: .command)
 
         let accessManagementButton = app.buttons[
             "rdp-ai-access-button"
         ].firstMatch
         XCTAssertTrue(
             accessManagementButton.waitForExistence(timeout: 5),
-            "RDP should keep AI Access Management available from the top-level toolbar outside the Desktop workspace."
+            "RDP should keep AI Access Management available from the main window toolbar after the desktop window closes."
         )
         XCTAssertTrue(waitUntilHittable(accessManagementButton, timeout: 3))
 

@@ -4143,7 +4143,7 @@ private struct RemoteFilesPanel: View {
             .disabled(!session.isConnectable || workspace.isRunning)
 
             RemotePathBar(
-                path: $session.remotePath,
+                path: session.remotePath,
                 isEnabled: session.isConnectable && !workspace.isRunning,
                 navigate: navigate(to:)
             )
@@ -5413,7 +5413,6 @@ private struct TunnelPanel: View {
                     manager.start(session: session, configuration: configuration)
                 }
                 .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
                 .disabled(!session.isConnectable || validationMessage != nil)
             }
         }
@@ -5480,6 +5479,9 @@ private struct TunnelPanel: View {
         } else {
             let tunnel = SavedSSHTunnel(session: session, configuration: configuration)
             modelContext.insert(tunnel)
+            // Save first: a new model's identifier changes when it is saved,
+            // and the table selects by the saved identifier.
+            try? modelContext.save()
             selectedSavedTunnelID = tunnel.persistentModelID
         }
     }

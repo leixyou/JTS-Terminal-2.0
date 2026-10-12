@@ -60,12 +60,16 @@ enum ServerProfileTransfer {
         )
         guard panel.runModal() == .OK, let url = panel.url else { return [] }
 
-        let imported: [RemoteSession]
+        var imported: [RemoteSession] = []
         do {
             let profiles = try SessionProfileCodec.decode(Data(contentsOf: url))
             imported = SessionProfileImporter.insert(profiles, into: modelContext)
             try modelContext.save()
         } catch {
+            // Don't leave unsaved servers in the sidebar after a failure.
+            for session in imported {
+                modelContext.delete(session)
+            }
             showFailure(
                 title: language.localized("Could Not Import Servers", "无法导入服务器"),
                 error: error,

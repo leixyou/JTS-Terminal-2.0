@@ -50,25 +50,27 @@ nonisolated enum RemotePathComponents {
 }
 
 /// The Files path bar: breadcrumbs like Finder's path bar; click the empty
-/// part of the bar (or Go to Folder) to type a path instead.
+/// part of the bar to type a path instead. A typed path is used only when
+/// you press Return; Escape or clicking away keeps the current folder.
 struct RemotePathBar: View {
     @Environment(\.appLanguage) private var language
-    @Binding var path: String
+    let path: String
     let isEnabled: Bool
     let navigate: (String) -> Void
     @State private var isEditing = false
+    @State private var draft = ""
     @FocusState private var isFieldFocused: Bool
 
     var body: some View {
         Group {
             if isEditing {
-                TextField(language.localized("Remote path", "远程路径"), text: $path)
+                TextField(language.localized("Remote path", "远程路径"), text: $draft)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
                     .focused($isFieldFocused)
                     .onSubmit {
                         isEditing = false
-                        navigate(path)
+                        navigate(draft)
                     }
                     .onExitCommand {
                         isEditing = false
@@ -78,7 +80,7 @@ struct RemotePathBar: View {
                             isEditing = false
                         }
                     }
-                    .onAppear {
+                    .task {
                         isFieldFocused = true
                     }
                     .accessibilityIdentifier("remote-files-path-field")
@@ -106,7 +108,7 @@ struct RemotePathBar: View {
                         }
                     }
                     .buttonStyle(.borderless)
-                    .fontWeight(component == components.last ? .semibold : .regular)
+                    .fontWeight(component == components.last ? Font.Weight.semibold : Font.Weight.regular)
                     .disabled(!isEnabled)
                     .help(component.path)
 
@@ -127,7 +129,7 @@ struct RemotePathBar: View {
         .contentShape(Rectangle())
         .onTapGesture {
             guard isEnabled else { return }
-            isEditing = true
+            beginEditing()
         }
         .help(language.localized(
             "Click a folder to open it, or click the empty part of the bar to type a path.",
@@ -136,7 +138,12 @@ struct RemotePathBar: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("remote-files-path-bar")
         .accessibilityAction(named: Text(language.localized("Edit Path", "编辑路径"))) {
-            isEditing = true
+            beginEditing()
         }
+    }
+
+    private func beginEditing() {
+        draft = path
+        isEditing = true
     }
 }

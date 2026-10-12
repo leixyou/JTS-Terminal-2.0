@@ -29,7 +29,6 @@ struct RDPDesktopLauncher: View {
                 windows.open(target, openProperties: openProperties)
             }
             .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("rdp-open-window-button")
             Button(language.localized("Server Properties", "服务器属性"), action: openProperties)
         }
