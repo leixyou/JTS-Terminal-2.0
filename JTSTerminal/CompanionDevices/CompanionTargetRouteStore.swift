@@ -2,7 +2,15 @@
 import Foundation
 import JTSCompanionDevices
 
-nonisolated enum CompanionDesktopRoutePreference: String, Codable, Sendable { case rdp, companion }
+nonisolated enum CompanionDesktopRoutePreference: String, Codable, Sendable {
+    case rdp, companion
+
+    /// Access-code enrollment opens a new target over RDP; the Companion desktop
+    /// is an explicit, experimental choice. Re-enrolling keeps the route already chosen.
+    static func afterEnrollment(replacing existing: CompanionTargetRouteBinding?) -> Self {
+        existing?.effectiveDesktopRoute ?? .rdp
+    }
+}
 
 nonisolated struct CompanionPendingDesktopAuthorization: Codable, Equatable, Sendable {
     let grantID: UUID

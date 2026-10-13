@@ -282,15 +282,15 @@ private struct RDPDesktopWindowContent: View {
         })) {
             Text(language.localized("RDP", "RDP"))
                 .tag(CompanionDesktopRoutePreference.rdp)
-            Text(language.localized("Companion", "Companion"))
+            Text(language.localized("Companion (Experimental)", "Companion（实验性）"))
                 .tag(CompanionDesktopRoutePreference.companion)
         }
         .pickerStyle(.segmented)
         .labelsHidden()
         .fixedSize()
         .help(language.localized(
-            "RDP shows the Windows desktop over Remote Desktop. Companion streams it through the paired Windows Companion. Switching closes the current desktop connection.",
-            "RDP 通过远程桌面显示 Windows 桌面；Companion 通过已配对的 Windows Companion 传输画面。切换会关闭当前桌面连接。"
+            "RDP shows the Windows desktop over Remote Desktop and is the default. Companion (experimental) streams it through the paired Windows Companion. Switching closes the current desktop connection.",
+            "RDP 通过远程桌面显示 Windows 桌面，是默认线路；Companion（实验性）通过已配对的 Windows Companion 传输画面。切换会关闭当前桌面连接。"
         ))
         .accessibilityIdentifier("rdp-desktop-route-picker")
     }
