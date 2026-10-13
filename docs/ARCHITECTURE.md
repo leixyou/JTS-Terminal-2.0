@@ -13,8 +13,9 @@ capability checks and structured responses. RDP display and input remain a
 separate visual route. Commands do not fall back to simulated keystrokes.
 New enrollments open the desktop over RDP, through the relay once a target is
 paired. The Companion desktop, which streams screen and input through the
-Windows Companion without RDP, is an experimental route selected per target;
-re-enrolling a target keeps its selected route.
+Windows Companion without RDP, is an experimental route selected per target.
+Re-enrolling a target with an access code keeps its selected route; binding a
+new grant through `jts_device_status` starts again on RDP.
 
 A device's existing AI desktop-control authorization includes pairing delegation.
 The enrollment request and returned public bundle bind device identities and
