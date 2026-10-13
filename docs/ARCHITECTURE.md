@@ -11,6 +11,10 @@ clients, device registry types, lane transports and the pinned TLS implementatio
 Normal command/file/structured UI operations use these direct channels, with
 capability checks and structured responses. RDP display and input remain a
 separate visual route. Commands do not fall back to simulated keystrokes.
+New enrollments open the desktop over RDP, through the relay once a target is
+paired. The Companion desktop, which streams screen and input through the
+Windows Companion without RDP, is an experimental route selected per target;
+re-enrolling a target keeps its selected route.
 
 A device's existing AI desktop-control authorization includes pairing delegation.
 The enrollment request and returned public bundle bind device identities and

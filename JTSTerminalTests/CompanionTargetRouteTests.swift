@@ -55,6 +55,21 @@ import Testing
             try await reopened.saveDesktopAuthorization(expected: selected, grantID: UUID(), expiresAt: Date().addingTimeInterval(60))
         }
     }
+    @Test func enrollmentStartsOnRDPAndReenrollmentKeepsAnExplicitCompanionChoice() async throws {
+        let persistence = RouteTestPersistence(), routes = CompanionTargetRouteStore(persistence: persistence)
+        let target = UUID(), device = UUID(), fingerprint = String(repeating: "c", count: 64)
+        try await routes.bind(targetID: target, targetBinding: fingerprint, deviceID: device,
+            grantID: UUID(), pairingID: UUID(), desktopRoute: .afterEnrollment(replacing: nil))
+        let enrolled = try #require(await routes.binding(targetID: target, targetBinding: fingerprint))
+        #expect(enrolled.effectiveDesktopRoute == .rdp)
+        try await routes.chooseDesktopRoute(expected: enrolled, preference: .companion)
+        let chosen = try #require(await routes.binding(targetID: target, targetBinding: fingerprint))
+        // A new access code issues new grants, so bind() cannot carry the choice over by itself.
+        try await routes.bind(targetID: target, targetBinding: fingerprint, deviceID: device,
+            grantID: UUID(), pairingID: UUID(), desktopRoute: .afterEnrollment(replacing: chosen))
+        let reopened = CompanionTargetRouteStore(persistence: persistence)
+        #expect(try await reopened.binding(targetID: target, targetBinding: fingerprint)?.effectiveDesktopRoute == .companion)
+    }
     @Test func bindingSurvivesReloadButCannotFollowAChangedProfile() async throws {
         let persistence = RouteTestPersistence()
         let first = CompanionTargetRouteStore(persistence: persistence)

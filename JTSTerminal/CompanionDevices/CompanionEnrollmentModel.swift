@@ -156,7 +156,7 @@ final class CompanionEnrollmentModel {
                     try await bindings.bind(targetID: targetID, targetBinding: targetBinding, deviceID: deviceID,
                         grantID: UUID(uuidString: bundle.grantID)!, fileGrantID: UUID(uuidString: bundle.fileGrantID),
                         rdpGrantID: UUID(uuidString: bundle.rdpGrantID), pairingID: UUID(uuidString: bundle.pairingID),
-                        desktopRoute: existing?.effectiveDesktopRoute ?? .companion)
+                        desktopRoute: .afterEnrollment(replacing: existing))
                 }
                 record.state = "complete"; try await save(record)
             } catch {
